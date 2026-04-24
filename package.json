@@ -1,11 +1,12 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "",
+  "description": "Node.js backend for Fawterha app using Supabase.",
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "start": "node server.js"
   },
   "repository": {
     "type": "git",
@@ -19,9 +20,9 @@
   },
   "homepage": "https://github.com/fawterha-project/backend#readme",
   "dependencies": {
-    "@supabase/supabase-js": "^2.103.0",
+    "@supabase/supabase-js": "^2.104.0",
     "cors": "^2.8.6",
-    "dotenv": "^17.4.1",
+    "dotenv": "^16.6.1",
     "express": "^5.2.1"
   },
   "devDependencies": {

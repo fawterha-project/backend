@@ -1,20 +1,19 @@
 import express from "express";
-import cors from "cors";
 import dotenv from "dotenv";
+import authRouter from "./routes/auth.js";
+import receiptsRouter from "./routes/receipts.js";
 
-dotenv.config();
-
+const env = dotenv.config().parsed;
 const app = express();
 
-app.use(cors());
 app.use(express.json());
-
-app.get("/", (req, res) => {
-  res.send("Server is running");
+app.use("/auth", authRouter);
+app.use("/receipts", receiptsRouter);
+app.get("/test", (req, response) => {
+  response.json({ message: "Server is working!" });
 });
 
-const PORT = process.env.PORT || 3000;
-
+const PORT = env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });
