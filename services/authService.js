@@ -1,9 +1,53 @@
-// TODO (RAND): Implement registerUser with Supabase Auth
+import supabase from "../supabaseClient.js";
+
+// Register user with Supabase Auth + users table
 export const registerUser = async (first_name, last_name, email, password) => {
-  return { user: { first_name, last_name, email } };
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        first_name,
+        last_name,
+      },
+    },
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  const { error: profileError } = await supabase.from("users").insert([
+    {
+      users_id: data.user.id,
+      first_name,
+      last_name,
+      email,
+    },
+  ]);
+
+  if (profileError) {
+    return { error: profileError.message };
+  }
+
+  return {
+    user: data.user,
+  };
 };
 
-// TODO (RAND): Implement loginUser with Supabase Auth
+// Login user with Supabase Auth
 export const loginUser = async (email, password) => {
-  return { user: { email } };
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  return {
+    user: data.user,
+    session: data.session,
+  };
 };
