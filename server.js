@@ -4,6 +4,7 @@ import authRouter from "./routes/auth.js";
 import receiptsRouter from "./routes/receipts.js";
 import notificationsRouter from "./routes/notifications.js";
 import expenseLimitsRouter from "./routes/expenseLimits.js";
+import reportsRouter from "./routes/reports.js";
 
 const env = dotenv.config().parsed;
 const app = express();
@@ -17,6 +18,7 @@ app.get("/test", (req, response) => {
   app.use("/expense-limits", expenseLimitsRouter);
 });
 app.use("/expense-limits", expenseLimitsRouter);
+app.use("/reports", reportsRouter);
 
 const PORT = env.PORT || 3000;
 app.listen(PORT, () => {
