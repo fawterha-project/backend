@@ -77,4 +77,14 @@ router.delete("/:id", async (req, res) => {
   res.status(200).json({ message: "Notification deleted successfully" });
 });
 
+// Cron-like endpoint — call this from pg_cron or manually to dispatch
+// scheduled notifications whose time has come.
+router.post("/run-due", async (req, res) => {
+  const { runDueNotifications } =
+    await import("../services/notificationsService.js");
+  const result = await runDueNotifications();
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.status(200).json({ dispatched: result.dispatched });
+});
+
 export default router;
