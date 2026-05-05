@@ -1,35 +1,58 @@
 import supabase from "../supabaseClient.js";
-import { createNewInvoiceNotification } from "./notificationsService.js";
+import {
+  createNewInvoiceNotification,
+  scheduleInvoiceReminders,
+  computeInvoiceDeadlines,
+} from "./notificationsService.js";
 
-// Store receipt in Supabase
 export const storeReceipt = async (data) => {
-  // Drop undefined fields so Postgres column defaults can apply
   const cleaned = Object.fromEntries(
     Object.entries(data).filter(([, v]) => v !== undefined),
   );
+
+  // Look up the merchant's return/exchange policy
+  const { data: merchant, error: merchantErr } = await supabase
+    .from("merchant")
+    .select("return_days, exchange_days")
+    .eq("merchant_id", cleaned.merchant_id)
+    .single();
+  if (merchantErr) {
+    return { error: `Could not load merchant policy: ${merchantErr.message}` };
+  }
+
+  // Compute deadlines from the merchant's policy
+  const deadlines = computeInvoiceDeadlines(
+    cleaned.issued_at,
+    merchant.return_days,
+    merchant.exchange_days,
+  );
+  if (deadlines.return_until) cleaned.return_until = deadlines.return_until;
+  if (deadlines.exchange_until)
+    cleaned.exchange_until = deadlines.exchange_until;
 
   const { data: receipt, error } = await supabase
     .from("invoice")
     .insert([cleaned])
     .select()
     .single();
+  if (error) return { error: error.message };
 
-  if (error) {
-    return { error: error.message };
-  }
-
-  // Fire a "new invoice" notification — don't fail the whole request if this errors,
-  // just log it. The receipt is already saved.
-  const notifResult = await createNewInvoiceNotification(receipt);
-  if (notifResult.error) {
+  const newInv = await createNewInvoiceNotification(receipt);
+  if (newInv.error) {
     console.warn(
       "[receipts] could not create new-invoice notification:",
-      notifResult.error,
+      newInv.error,
     );
+  }
+
+  const sched = await scheduleInvoiceReminders(receipt);
+  if (sched.error) {
+    console.warn("[receipts] could not schedule reminders:", sched.error);
   }
 
   return { receipt };
 };
+
 // Get receipts for a specific user
 export const getUserReceipts = async (users_id) => {
   const { data: receipts, error } = await supabase
