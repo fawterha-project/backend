@@ -3,6 +3,7 @@ import {
   createNewInvoiceNotification,
   scheduleInvoiceReminders,
   computeInvoiceDeadlines,
+  checkAndNotifySpendingLimits,
 } from "./notificationsService.js";
 
 export const storeReceipt = async (data) => {
@@ -48,6 +49,15 @@ export const storeReceipt = async (data) => {
   const sched = await scheduleInvoiceReminders(receipt);
   if (sched.error) {
     console.warn("[receipts] could not schedule reminders:", sched.error);
+  }
+
+  // Check spending limits and fire warning if user is approaching/over budget
+  const limitsCheck = await checkAndNotifySpendingLimits(receipt.users_id);
+  if (limitsCheck.error) {
+    console.warn(
+      "[receipts] could not check spending limits:",
+      limitsCheck.error,
+    );
   }
 
   return { receipt };
