@@ -256,3 +256,66 @@ export const checkAndNotifySpendingLimits = async (user_id) => {
   });
   return { success: true };
 };
+
+// ---- Monthly report reminder ----
+
+const ARABIC_MONTHS = [
+  "يناير",
+  "فبراير",
+  "مارس",
+  "إبريل",
+  "مايو",
+  "يونيو",
+  "يوليو",
+  "أغسطس",
+  "سبتمبر",
+  "أكتوبر",
+  "نوفمبر",
+  "ديسمبر",
+];
+
+function addMonths(date, n) {
+  const d = new Date(date);
+  d.setUTCMonth(d.getUTCMonth() + n);
+  return d;
+}
+
+// Find every user who had at least one invoice in the previous month
+// and (if they haven't already received this month's reminder) send them
+// "تقريرك الشهري جاهز". Called by cron once a month — typically on the 1st.
+export const runMonthlyReportReminders = async () => {
+  const currentMonthStart = startOfMonth();
+  const previousMonthStart = addMonths(currentMonthStart, -1);
+
+  const { data: invoices, error } = await supabase
+    .from("invoice")
+    .select("users_id")
+    .gte("issued_at", previousMonthStart.toISOString())
+    .lt("issued_at", currentMonthStart.toISOString());
+  if (error) return { error: error.message };
+
+  const userIds = [...new Set((invoices || []).map((i) => i.users_id))];
+
+  const monthName = ARABIC_MONTHS[previousMonthStart.getUTCMonth()];
+  let sent = 0;
+  for (const user_id of userIds) {
+    if (
+      await alreadyFiredThisPeriod(
+        user_id,
+        "report_reminder_monthly",
+        currentMonthStart,
+      )
+    ) {
+      continue;
+    }
+    const result = await createNotification({
+      user_id,
+      title: "تقريرك الشهري جاهز",
+      message: `تم إعداد تقرير شهر ${monthName}. اطلع على تفاصيل إنفاقك.`,
+      notification_type: "reminder",
+      subtype: "report_reminder_monthly",
+    });
+    if (!result.error) sent++;
+  }
+  return { sent, considered: userIds.length };
+};
