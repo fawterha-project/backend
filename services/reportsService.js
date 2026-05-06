@@ -184,12 +184,17 @@ export const getSummary = async (user_id) => {
 
   const total = sumTotal(thisMonth.invoices);
   const previous_total = sumTotal(lastMonth.invoices);
+  const invoice_count = thisMonth.invoices.length;
+  const categories = await groupByCategory(thisMonth.invoices, total);
+
   return {
     summary: {
       total: round2(total),
       previous_total: round2(previous_total),
       ...computeChange(total, previous_total),
-      invoice_count: thisMonth.invoices.length,
+      invoice_count,
+      average: invoice_count > 0 ? round2(total / invoice_count) : 0,
+      top_category: categories[0] || null,
       trend: groupByDay(lastWeek.invoices, sevenDaysAgo, 7),
     },
   };
@@ -208,12 +213,17 @@ export const getWeekly = async (user_id) => {
 
   const total = sumTotal(thisWeek.invoices);
   const previous_total = sumTotal(lastWeek.invoices);
+  const invoice_count = thisWeek.invoices.length;
   const categories = await groupByCategory(thisWeek.invoices, total);
+
   return {
     weekly: {
       total: round2(total),
       previous_total: round2(previous_total),
       ...computeChange(total, previous_total),
+      invoice_count,
+      average: invoice_count > 0 ? round2(total / invoice_count) : 0,
+      top_category: categories[0] || null,
       trend: groupByDay(thisWeek.invoices, weekStart, 7),
       categories,
     },
@@ -233,12 +243,17 @@ export const getMonthly = async (user_id) => {
 
   const total = sumTotal(thisMonth.invoices);
   const previous_total = sumTotal(lastMonth.invoices);
+  const invoice_count = thisMonth.invoices.length;
   const categories = await groupByCategory(thisMonth.invoices, total);
+
   return {
     monthly: {
       total: round2(total),
       previous_total: round2(previous_total),
       ...computeChange(total, previous_total),
+      invoice_count,
+      average: invoice_count > 0 ? round2(total / invoice_count) : 0,
+      top_category: categories[0] || null,
       trend: groupByWeek(thisMonth.invoices),
       categories,
     },
@@ -259,13 +274,18 @@ export const getYearly = async (user_id, year) => {
 
   const total = sumTotal(thisYear.invoices);
   const previous_total = sumTotal(lastYear.invoices);
+  const invoice_count = thisYear.invoices.length;
   const categories = await groupByCategory(thisYear.invoices, total);
+
   return {
     yearly: {
       year: yearNum,
       total: round2(total),
       previous_total: round2(previous_total),
       ...computeChange(total, previous_total),
+      invoice_count,
+      average: invoice_count > 0 ? round2(total / invoice_count) : 0,
+      top_category: categories[0] || null,
       trend: groupByMonth(thisYear.invoices),
       categories,
     },
