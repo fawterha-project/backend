@@ -1,4 +1,5 @@
 import supabase from "../supabaseClient.js";
+import process from "node:process";
 
 // Arabic day names indexed by JS getUTCDay() (0 = Sunday ... 6 = Saturday)
 const ARABIC_DAYS = ["أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"];
@@ -17,21 +18,40 @@ const ARABIC_MONTHS = [
   "ديسمبر",
 ];
 
-// ---- Date helpers ----
+// Saudi time zone helpers:
+const SAUDI_OFFSET_MS =
+  parseInt(process.env.SAUDI_TIMEZONE_OFFSET_HOURS || "3", 10) * 60 * 60 * 1000;
+function toSaudiView(date) {
+  return new Date(date.getTime() + SAUDI_OFFSET_MS);
+}
+function fromSaudiView(saudiViewDate) {
+  return new Date(saudiViewDate.getTime() - SAUDI_OFFSET_MS);
+}
+function saudiDayOfWeek(date) {
+  return toSaudiView(date).getUTCDay();
+}
+function saudiMonthIndex(date) {
+  return toSaudiView(date).getUTCMonth();
+}
+function saudiDayOfMonth(date) {
+  return toSaudiView(date).getUTCDate();
+}
+
+// Date helpers:
 function startOfWeek(date = new Date()) {
-  // Saturday is the start of the week (Saudi convention)
-  const d = new Date(date);
-  d.setUTCHours(0, 0, 0, 0);
-  const day = d.getUTCDay();
-  const offset = (day + 1) % 7; // Sat=0, Sun=1, ..., Fri=6
-  d.setUTCDate(d.getUTCDate() - offset);
-  return d;
+  const sv = toSaudiView(date);
+  sv.setUTCHours(0, 0, 0, 0);
+  // Saturday is start of week — JS Sun=0, ..., Sat=6
+  const day = sv.getUTCDay();
+  const offset = (day + 1) % 7;
+  sv.setUTCDate(sv.getUTCDate() - offset);
+  return fromSaudiView(sv);
 }
 function startOfMonth(date = new Date()) {
-  const d = new Date(date);
-  d.setUTCHours(0, 0, 0, 0);
-  d.setUTCDate(1);
-  return d;
+  const sv = toSaudiView(date);
+  sv.setUTCHours(0, 0, 0, 0);
+  sv.setUTCDate(1);
+  return fromSaudiView(sv);
 }
 function addDays(date, n) {
   const d = new Date(date);
@@ -80,7 +100,7 @@ function groupByDay(invoices, startDate, days) {
   for (let i = 0; i < days; i++) {
     const d = addDays(startDate, i);
     buckets.push({
-      label: ARABIC_DAYS[d.getUTCDay()],
+      label: ARABIC_DAYS[saudiDayOfWeek(d)],
       date: d.toISOString().slice(0, 10),
       total: 0,
     });
@@ -101,7 +121,7 @@ function groupByWeek(invoices) {
     total: 0,
   }));
   for (const inv of invoices) {
-    const day = new Date(inv.issued_at).getUTCDate();
+    const day = saudiDayOfMonth(new Date(inv.issued_at));
     const idx = Math.min(Math.floor((day - 1) / 7), 4);
     buckets[idx].total = round2(buckets[idx].total + Number(inv.total_price));
   }
@@ -116,7 +136,7 @@ function groupByMonth(invoices) {
     total: 0,
   }));
   for (const inv of invoices) {
-    const m = new Date(inv.issued_at).getUTCMonth();
+    const m = saudiMonthIndex(new Date(inv.issued_at));
     buckets[m].total = round2(buckets[m].total + Number(inv.total_price));
   }
   return buckets;
@@ -163,7 +183,7 @@ async function groupByCategory(invoices, totalSum) {
   return result.sort((a, b) => b.total - a.total);
 }
 
-// ---- Endpoint logic ----
+// Endpoint logic:
 
 export const getSummary = async (user_id) => {
   const monthStart = startOfMonth();
@@ -262,9 +282,9 @@ export const getMonthly = async (user_id) => {
 
 export const getYearly = async (user_id, year) => {
   const yearNum = year ? parseInt(year, 10) : new Date().getUTCFullYear();
-  const yearStart = new Date(Date.UTC(yearNum, 0, 1));
-  const yearEnd = new Date(Date.UTC(yearNum + 1, 0, 1));
-  const prevStart = new Date(Date.UTC(yearNum - 1, 0, 1));
+  const yearStart = fromSaudiView(new Date(Date.UTC(yearNum, 0, 1))); // adjust for Saudi timezone
+  const yearEnd = fromSaudiView(new Date(Date.UTC(yearNum + 1, 0, 1)));
+  const prevStart = fromSaudiView(new Date(Date.UTC(yearNum - 1, 0, 1)));
   const [thisYear, lastYear] = await Promise.all([
     fetchInvoices(user_id, yearStart, yearEnd),
     fetchInvoices(user_id, prevStart, yearStart),
