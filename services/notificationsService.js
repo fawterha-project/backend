@@ -1,6 +1,17 @@
 import supabase from "../supabaseClient.js";
+import process from "node:process";
 
-const REMINDER_LEAD_DAYS = 2; // fire reminder this many days before deadline
+// Saudi time zone helpers:
+const SAUDI_OFFSET_MS =
+  parseInt(process.env.SAUDI_TIMEZONE_OFFSET_HOURS || "3", 10) * 60 * 60 * 1000;
+function toSaudiView(date) {
+  return new Date(date.getTime() + SAUDI_OFFSET_MS);
+}
+function fromSaudiView(saudiViewDate) {
+  return new Date(saudiViewDate.getTime() - SAUDI_OFFSET_MS);
+}
+
+const REMINDER_LEAD_DAYS = parseInt(process.env.REMINDER_LEAD_DAYS || "2", 10);
 
 function addDays(date, days) {
   const d = new Date(date);
@@ -43,8 +54,8 @@ export const createNotification = async ({
 export const createNewInvoiceNotification = async (invoice) => {
   return createNotification({
     user_id: invoice.users_id,
-    title: "New invoice added",
-    message: `A new invoice from ${invoice.merchant_name} for ${Number(invoice.total_price).toFixed(2)} SAR was added.`,
+    title: "فاتورة جديدة",
+    message: `تمت إضافة فاتورة جديدة من ${invoice.merchant_name} بقيمة ${Number(invoice.total_price).toFixed(2)} ${process.env.DEFAULT_CURRENCY || "ريال"}.`,
     notification_type: "invoice",
     invoice_id: invoice.invoice_id,
     subtype: "new_invoice",
@@ -66,8 +77,8 @@ export const scheduleInvoiceReminders = async (invoice) => {
     if (fireAt > now) {
       await createNotification({
         user_id: invoice.users_id,
-        title: "Return window closing",
-        message: `${REMINDER_LEAD_DAYS} days left to return items from your ${invoice.merchant_name} invoice.`,
+        title: "موعد الإرجاع يقترب",
+        message: `تبقى ${REMINDER_LEAD_DAYS} ${REMINDER_LEAD_DAYS === 1 ? "يوم" : "أيام"} لإرجاع المنتجات من فاتورة ${invoice.merchant_name}.`,
         notification_type: "reminder",
         invoice_id: invoice.invoice_id,
         subtype: "return_due",
@@ -82,8 +93,8 @@ export const scheduleInvoiceReminders = async (invoice) => {
     if (fireAt > now) {
       await createNotification({
         user_id: invoice.users_id,
-        title: "Exchange window closing",
-        message: `${REMINDER_LEAD_DAYS} days left to exchange items from your ${invoice.merchant_name} invoice.`,
+        title: "موعد الاستبدال يقترب",
+        message: `تبقى ${REMINDER_LEAD_DAYS} ${REMINDER_LEAD_DAYS === 1 ? "يوم" : "أيام"} لاستبدال المنتجات من فاتورة ${invoice.merchant_name}.`,
         notification_type: "reminder",
         invoice_id: invoice.invoice_id,
         subtype: "exchange_due",
@@ -186,15 +197,17 @@ export const deleteNotification = async (notification_id) => {
   return { success: true };
 };
 
-// ---- Spending limit warnings (monthly only) ----
+// Spending limit warnings (monthly only):
 
-const APPROACHING_THRESHOLD = 0.8;
+const APPROACHING_THRESHOLD = parseFloat(
+  process.env.APPROACHING_THRESHOLD || "0.8",
+);
 
 function startOfMonth(date = new Date()) {
-  const d = new Date(date);
-  d.setUTCHours(0, 0, 0, 0);
-  d.setUTCDate(1);
-  return d;
+  const sv = toSaudiView(date); // Convert to Saudi time zone
+  sv.setUTCHours(0, 0, 0, 0);
+  sv.setUTCDate(1);
+  return fromSaudiView(sv);
 }
 
 async function sumSpendingSince(user_id, since) {
@@ -231,18 +244,15 @@ export const checkAndNotifySpendingLimits = async (user_id) => {
   const limit = Number(limits.monthly_limit);
   const ratio = total / limit;
 
-  let subtype, title, message;
-  if (ratio >= 1.0) {
-    subtype = "limit_exceeded_monthly";
-    title = "Monthly budget exceeded";
-    message = `You've exceeded your monthly budget. Spent ${total.toFixed(2)} SAR (limit ${limit.toFixed(2)} SAR).`;
-  } else if (ratio >= APPROACHING_THRESHOLD) {
-    subtype = "limit_approaching_monthly";
-    title = "Monthly budget alert";
-    message = `You've used ${Math.round(ratio * 100)}% of your monthly budget. Spent ${total.toFixed(2)} SAR of ${limit.toFixed(2)} SAR.`;
-  } else {
+  // Single warning fires once per month when user crosses 80%.
+  // If they then cross 100% later, no extra notification — they were already warned.
+  if (ratio < APPROACHING_THRESHOLD) {
     return { success: true };
   }
+
+  const subtype = "limit_approaching_monthly";
+  const title = "تنبيه الإنفاق الشهري";
+  const message = `لقد استخدمت ${Math.round(ratio * 100)}% من حد الإنفاق الشهري. الإنفاق ${total.toFixed(2)} ${process.env.DEFAULT_CURRENCY || "ريال"} من ${limit.toFixed(2)} ${process.env.DEFAULT_CURRENCY || "ريال"}.`;
 
   if (await alreadyFiredThisPeriod(user_id, subtype, monthStart))
     return { success: true };
@@ -257,7 +267,7 @@ export const checkAndNotifySpendingLimits = async (user_id) => {
   return { success: true };
 };
 
-// ---- Monthly report reminder ----
+// Monthly report reminder:
 
 const ARABIC_MONTHS = [
   "يناير",
@@ -318,4 +328,17 @@ export const runMonthlyReportReminders = async () => {
     if (!result.error) sent++;
   }
   return { sent, considered: userIds.length };
+};
+
+// Reset budget-warning dedup so warnings can fire fresh after a limit change
+export const resetBudgetWarningDedup = async (user_id) => {
+  const monthStart = startOfMonth();
+  const { error } = await supabase
+    .from("notifications")
+    .delete()
+    .eq("user_id", user_id)
+    .in("subtype", ["limit_approaching_monthly", "limit_exceeded_monthly"])
+    .gte("created_at", monthStart.toISOString());
+  if (error) return { error: error.message };
+  return { success: true };
 };

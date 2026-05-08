@@ -4,7 +4,10 @@ import {
   getLimit,
   removeLimit,
 } from "../services/expenseLimitsService.js";
-import { checkAndNotifySpendingLimits } from "../services/notificationsService.js";
+import {
+  checkAndNotifySpendingLimits,
+  resetBudgetWarningDedup,
+} from "../services/notificationsService.js";
 
 const router = express.Router();
 
@@ -22,6 +25,9 @@ router.put("/", async (req, res) => {
 
   const result = await setMonthlyLimit(users_id, Number(monthly_limit));
   if (result.error) return res.status(400).json({ error: result.error });
+
+  // Reset the dedup window so warnings can fire fresh against the new limit
+  await resetBudgetWarningDedup(users_id);
 
   // Re-check spending against the new limit — if user is already over, fire a warning right away.
   await checkAndNotifySpendingLimits(users_id);
