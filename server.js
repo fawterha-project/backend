@@ -15,7 +15,6 @@ app.use("/receipts", receiptsRouter);
 app.use("/notifications", notificationsRouter);
 app.get("/test", (req, response) => {
   response.json({ message: "Server is working!" });
-  app.use("/expense-limits", expenseLimitsRouter);
 });
 app.use("/expense-limits", expenseLimitsRouter);
 app.use("/reports", reportsRouter);
