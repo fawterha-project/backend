@@ -6,6 +6,7 @@ import notificationsRouter from "./routes/notifications.js";
 import expenseLimitsRouter from "./routes/expenseLimits.js";
 import reportsRouter from "./routes/reports.js";
 
+
 const env = dotenv.config().parsed;
 const app = express();
 
@@ -13,6 +14,7 @@ app.use(express.json());
 app.use("/auth", authRouter);
 app.use("/receipts", receiptsRouter);
 app.use("/notifications", notificationsRouter);
+
 app.get("/test", (req, response) => {
   response.json({ message: "Server is working!" });
 });

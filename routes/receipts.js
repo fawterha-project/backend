@@ -1,112 +1,165 @@
+
 import express from "express";
+import multer from "multer";
+import { authMiddleware } from "../middleware/authMiddleware.js";
+
 import {
-  storeReceipt,
+  uploadReceiptAttachment,
+  getUserAttachments,
+  deleteAttachment,
   getUserReceipts,
+  getReceiptById,
   deleteReceipt,
+  extractInvoiceDataWithAI, 
+  createInvoiceFromAttachment,
 } from "../services/receiptsService.js";
 
 const router = express.Router();
 
-router.post("/", async (req, res) => {
-  const {
-    users_id,
-    merchant_id,
-    title,
-    invoice_number,
-    merchant_name,
-    merchant_address,
-    issued_at,
-    merchant_vat,
-    subtotal,
-    vat_amount,
-    total_price,
-    payment_method,
-    discount_amount,
-    points_used,
-    categorie_id,
-    is_favorite,
-    qr_code,
-    extra_data,
-  } = req.body;
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5 MB
+  },
+});
 
-  if (
-    !users_id ||
-    !merchant_id ||
-    !title ||
-    !invoice_number ||
-    !merchant_name ||
-    !issued_at ||
-    !payment_method ||
-    !total_price
-  ) {
-    return res
-      .status(400)
-      .json({
-        error:
-          "users_id, merchant_id, title, invoice_number, merchant_name, issued_at, payment_method and total_price are required",
+// 1. رفع الفاتورة (صورة أو PDF)
+router.post("/upload", authMiddleware, upload.single("file"), async (req, res) => {
+  try {
+    const result = await uploadReceiptAttachment(
+      req.user.users_id,
+      req.file,
+      req.body
+    );
+
+    if (result.error) {
+      return res.status(400).json({ message: result.error });
+    }
+
+    res.status(201).json({
+      message: "File uploaded successfully",
+      attachment: result.attachment,
+    });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// 2. استخراج البيانات بالذكاء الاصطناعي (لعرضها في شاشة المراجعة قبل الحفظ)
+router.post("/attachments/:id/process", authMiddleware, async (req, res) => {
+  try {
+    // 💡 نستخدم دالة الاستخراج فقط لترجع البيانات للتطبيق
+    const result = await extractInvoiceDataWithAI(
+      req.params.id,
+      req.user.users_id
+    );
+
+    if (result.error) {
+      return res.status(400).json({
+        message: result.error,
       });
+    }
+
+    // نرجع البيانات المستخرجة للموبايل عشان يعرضها للمستخدم يراجعها
+    res.status(200).json({
+      message: "Data extracted successfully",
+      extracted_data: result.extracted
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+});
+
+// 3. الحفظ النهائي (بعد ضغط المستخدم على زر "حفظ" في الموبايل)
+router.post("/attachments/:id/create-invoice", authMiddleware, async (req, res) => {
+    try {
+      // هذه الدالة ستقوم بالاستخراج والحفظ النهائي
+      // (ملاحظة: يمكنك لاحقاً جعل هذا الراوت يستقبل البيانات التي عدلها المستخدم في الشاشة بدلاً من الاعتماد الكلي على الذكاء الاصطناعي مجدداً)
+      const result = await createInvoiceFromAttachment(
+        req.params.id,
+        req.user.users_id
+      );
+
+      if (result.error) {
+        return res.status(400).json({
+          message: result.error,
+        });
+      }
+
+      res.status(201).json(result);
+    } catch (error) {
+      res.status(500).json({
+        message: error.message,
+      });
+    }
+  }
+);
+
+// Get user uploaded attachments
+router.get("/attachments", authMiddleware, async (req, res) => {
+  const result = await getUserAttachments(req.user.users_id);
+
+  if (result.error) {
+    return res.status(400).json({ message: result.error });
   }
 
-  const result = await storeReceipt({
-    users_id,
-    merchant_id,
-    title,
-    invoice_number,
-    merchant_name,
-    merchant_address,
-    issued_at,
-    merchant_vat,
-    subtotal,
-    vat_amount,
-    total_price,
-    payment_method,
-    discount_amount,
-    points_used,
-    categorie_id,
-    is_favorite,
-    qr_code,
-    extra_data,
+  res.status(200).json({
+    attachments: result.attachments,
   });
-
-  if (result.error) {
-    return res.status(400).json({ error: result.error });
-  }
-
-  res
-    .status(201)
-    .json({ message: "Receipt stored successfully", receipt: result.receipt });
 });
 
-router.get("/", async (req, res) => {
-  const { users_id } = req.query;
-
-  if (!users_id) {
-    return res.status(400).json({ error: "users_id is required" });
-  }
-
-  const result = await getUserReceipts(users_id);
+// Delete attachment
+router.delete("/attachments/:id", authMiddleware, async (req, res) => {
+  const result = await deleteAttachment(req.params.id, req.user.users_id);
 
   if (result.error) {
-    return res.status(400).json({ error: result.error });
+    return res.status(400).json({ message: result.error });
   }
 
-  res.status(200).json({ receipts: result.receipts });
+  res.status(200).json({
+    message: "Attachment deleted successfully",
+  });
 });
 
-router.delete("/:id", async (req, res) => {
-  const { id } = req.params;
-
-  if (!id) {
-    return res.status(400).json({ error: "invoice_id is required" });
-  }
-
-  const result = await deleteReceipt(id);
+// Get all invoices for logged-in user
+router.get("/", authMiddleware, async (req, res) => {
+  const result = await getUserReceipts(req.user.users_id, req.query);
 
   if (result.error) {
-    return res.status(400).json({ error: result.error });
+    return res.status(400).json({ message: result.error });
   }
 
-  res.status(200).json({ message: "Receipt deleted successfully" });
+  res.status(200).json({
+    receipts: result.receipts,
+  });
+});
+
+// Get invoice details
+router.get("/:id", authMiddleware, async (req, res) => {
+  const result = await getReceiptById(req.params.id, req.user.users_id);
+
+  if (result.error) {
+    return res.status(404).json({ message: result.error });
+  }
+
+  res.status(200).json({
+    receipt: result.receipt,
+  });
+});
+
+// Soft delete invoice
+router.delete("/:id", authMiddleware, async (req, res) => {
+  const result = await deleteReceipt(req.params.id, req.user.users_id);
+
+  if (result.error) {
+    return res.status(400).json({ message: result.error });
+  }
+
+  res.status(200).json({
+    message: "Receipt deleted successfully",
+  });
 });
 
 export default router;
