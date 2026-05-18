@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import supabase from "../supabaseClient.js";
+import process from "node:process";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 

@@ -5,23 +5,28 @@ import receiptsRouter from "./routes/receipts.js";
 import notificationsRouter from "./routes/notifications.js";
 import expenseLimitsRouter from "./routes/expenseLimits.js";
 import reportsRouter from "./routes/reports.js";
+import externalRouter from "./routes/external.js";
+import morgan from "morgan";
+import process from "node:process";
 
-
-const env = dotenv.config().parsed;
+dotenv.config();
 const app = express();
+
+app.use(morgan("dev"));
 
 app.use(express.json());
 app.use("/auth", authRouter);
 app.use("/receipts", receiptsRouter);
 app.use("/notifications", notificationsRouter);
+app.use("/expense-limits", expenseLimitsRouter);
+app.use("/reports", reportsRouter);
+app.use("/external", externalRouter);
 
 app.get("/test", (req, response) => {
   response.json({ message: "Server is working!" });
 });
-app.use("/expense-limits", expenseLimitsRouter);
-app.use("/reports", reportsRouter);
 
-const PORT = env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });

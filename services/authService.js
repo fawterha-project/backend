@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import supabase from "../supabaseClient.js";
 import { sendVerificationCode } from "./emailService.js";
 //import { sendSMSOTP } from "./smsService.js";
+import process from "node:process";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1d";
@@ -14,7 +15,7 @@ function createToken(user) {
       email: user.email,
     },
     JWT_SECRET,
-    { expiresIn: JWT_EXPIRES_IN }
+    { expiresIn: JWT_EXPIRES_IN },
   );
 }
 function validatePassword(password) {
@@ -23,14 +24,14 @@ function validatePassword(password) {
 
   if (!passwordRegex.test(password)) {
     throw new Error(
-      "Password must be at least 8 characters and include one uppercase letter, one number, and one special character"
+      "Password must be at least 8 characters and include one uppercase letter, one number, and one special character",
     );
   }
 }
 
 export async function registerUser(first_name, last_name, email, password) {
   validatePassword(password);
-   const { data: existingUser } = await supabase
+  const { data: existingUser } = await supabase
     .from("users")
     .select("users_id")
     .eq("email", email)
@@ -102,9 +103,9 @@ export async function verifySignupCode(email, code) {
 
   const { data: user, error: updateError } = await supabase
     .from("users")
-    .update({ 
-    is_verified: true,
-    updated_at: new Date().toISOString(),
+    .update({
+      is_verified: true,
+      updated_at: new Date().toISOString(),
     })
     .eq("email", email)
     .select()
@@ -153,10 +154,10 @@ export async function loginUser(email, password) {
   }
 
   if (!user.is_verified) {
-  throw new Error("Please verify your email first");
+    throw new Error("Please verify your email first");
   }
   const token = createToken(user);
-await saveAuthToken(user.users_id, token);
+  await saveAuthToken(user.users_id, token);
   delete user.password_hash;
 
   return {
@@ -168,7 +169,9 @@ await saveAuthToken(user.users_id, token);
 export async function getProfile(users_id) {
   const { data: user, error } = await supabase
     .from("users")
-    .select("users_id, first_name, last_name, email, phone, date_of_birth, gender, created_at, updated_at")
+    .select(
+      "users_id, first_name, last_name, email, phone, date_of_birth, gender, created_at, updated_at",
+    )
     .eq("users_id", users_id)
     .single();
 
@@ -199,7 +202,9 @@ export async function updateProfile(users_id, updates) {
     .from("users")
     .update(allowedUpdates)
     .eq("users_id", users_id)
-    .select("users_id, first_name, last_name, email, phone, date_of_birth, gender, updated_at")
+    .select(
+      "users_id, first_name, last_name, email, phone, date_of_birth, gender, updated_at",
+    )
     .single();
 
   if (error) {
@@ -208,8 +213,6 @@ export async function updateProfile(users_id, updates) {
 
   return user;
 }
-
-
 
 export async function saveAuthToken(users_id, token) {
   const expiresAt = new Date();
@@ -261,17 +264,17 @@ export async function deleteAccount(users_id, password) {
   if (!isPasswordCorrect) {
     throw new Error("Invalid password");
   }
-const { error: revokeError } = await supabase
-  .from("auth_tokens")
-  .update({
-    is_revoked: true,
-    revoked_at: new Date().toISOString(),
-  })
-  .eq("user_id", users_id);
+  const { error: revokeError } = await supabase
+    .from("auth_tokens")
+    .update({
+      is_revoked: true,
+      revoked_at: new Date().toISOString(),
+    })
+    .eq("user_id", users_id);
 
-if (revokeError) {
-  throw new Error(revokeError.message);
-}
+  if (revokeError) {
+    throw new Error(revokeError.message);
+  }
   const { error: deleteError } = await supabase
     .from("users")
     .delete()
@@ -299,7 +302,7 @@ export async function forgotPassword(email) {
   if (!user) throw new Error("User not found");
 
   // generate 4-digit code
- const code = Math.floor(1000 + Math.random() * 9000).toString();
+  const code = Math.floor(1000 + Math.random() * 9000).toString();
 
   const expiresAt = new Date();
   expiresAt.setMinutes(expiresAt.getMinutes() + 10);
@@ -321,9 +324,8 @@ export async function forgotPassword(email) {
 
   await sendVerificationCode(email, code);
 
-return { message: "Verification code sent to email" };
+  return { message: "Verification code sent to email" };
 }
-
 
 export async function verifyCode(email, code) {
   const { data, error } = await supabase
@@ -348,8 +350,6 @@ export async function verifyCode(email, code) {
   return { message: "Code is valid" };
 }
 
-
-
 export async function resetPassword(email, code, newPassword) {
   const { data, error } = await supabase
     .from("verification_code")
@@ -366,7 +366,7 @@ export async function resetPassword(email, code, newPassword) {
   if (new Date(data.expires_at) < new Date()) {
     throw new Error("Code expired");
   }
-validatePassword(newPassword);
+  validatePassword(newPassword);
   const password_hash = await bcrypt.hash(newPassword, 10);
 
   await supabase
@@ -427,7 +427,7 @@ export async function resendCode(email, purpose) {
 
   return { message: "Code resent successfully" };
 }
- //AKA RESET PASS
+//AKA RESET PASS
 export async function changePassword(users_id, currentPassword, newPassword) {
   if (!currentPassword || !newPassword) {
     throw new Error("Current password and new password are required");
@@ -445,7 +445,7 @@ export async function changePassword(users_id, currentPassword, newPassword) {
 
   const isPasswordCorrect = await bcrypt.compare(
     currentPassword,
-    user.password_hash
+    user.password_hash,
   );
 
   if (!isPasswordCorrect) {

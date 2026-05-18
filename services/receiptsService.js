@@ -2,6 +2,7 @@ import supabase from "../supabaseClient.js";
 import axios from "axios";
 import { GoogleGenAI } from "@google/genai";
 import crypto from "crypto";
+import process from "process";
 
 const BUCKET_NAME = "invoice-files";
 const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -113,10 +114,11 @@ export const extractInvoiceDataWithAI = async (attachment_id, users_id) => {
       responseType: "arraybuffer",
     });
     const base64Data = Buffer.from(fileRes.data).toString("base64");
-    
-    const mimeType = attachment.file_type === "pdf" 
-      ? "application/pdf" 
-      : (fileRes.headers["content-type"] || "image/jpeg");
+
+    const mimeType =
+      attachment.file_type === "pdf"
+        ? "application/pdf"
+        : fileRes.headers["content-type"] || "image/jpeg";
 
     const response = await genai.models.generateContent({
       model: "gemini-2.5-flash",
@@ -143,7 +145,11 @@ export const extractInvoiceDataWithAI = async (attachment_id, users_id) => {
     // تحديث حالة المرفق
     await supabase
       .from("invoice_attachments")
-      .update({ processing_status: "processed", ocr_confidence: 0.95, processing_error: null })
+      .update({
+        processing_status: "processed",
+        ocr_confidence: 0.95,
+        processing_error: null,
+      })
       .eq("attachment_id", attachment_id);
 
     return { success: true, extracted };
@@ -153,7 +159,7 @@ export const extractInvoiceDataWithAI = async (attachment_id, users_id) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// 
+//
 // ─────────────────────────────────────────────────────────────
 export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
   try {
@@ -166,15 +172,15 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
     if (data.is_invoice === false) {
       await supabase
         .from("invoice_attachments")
-        .update({ 
-          processing_status: "failed", 
-          processing_error: "Not a valid receipt" 
+        .update({
+          processing_status: "failed",
+          processing_error: "Not a valid receipt",
         })
         .eq("attachment_id", attachment_id);
 
-      return { 
-        error: "INVALID_RECEIPT", 
-        message: "الصورة ليست فاتورة معتمدة" 
+      return {
+        error: "INVALID_RECEIPT",
+        message: "الصورة ليست فاتورة معتمدة",
       };
     }
 
@@ -191,7 +197,7 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
       if (categoryData) {
         categoryId = categoryData.categorie_id;
       }
-      // ملاحظة: إذا لم يجد تطابق، سيبقى categoryId = null 
+      // ملاحظة: إذا لم يجد تطابق، سيبقى categoryId = null
       // وهذا يعني أنها ستظهر تلقائياً في قسم "غير مصنفة"
     }
 
@@ -213,11 +219,11 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
         const { data: newMerchant, error: mError } = await supabase
           .from("merchant")
           .insert([
-            { 
+            {
               merchant_name: merchantName,
               vat_number: data.merchant_vat || null,
-              address: data.merchant_address || null
-            }
+              address: data.merchant_address || null,
+            },
           ])
           .select()
           .single();
@@ -236,7 +242,8 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
           users_id,
           merchant_id: merchantId,
           categorie_id: categoryId, // ربط التصنيف التلقائي هنا
-          title: data.title || (merchantName ? `فاتورة - ${merchantName}` : null),
+          title:
+            data.title || (merchantName ? `فاتورة - ${merchantName}` : null),
           invoice_number: data.invoice_number || null,
           merchant_name: merchantName || null,
           merchant_address: data.merchant_address || null,
@@ -248,7 +255,7 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
           discount_amount: parseNumber(data.discount_amount),
           payment_method: data.payment_method || "unknown",
           currency: data.currency || "SAR",
-          source_type: "scan", 
+          source_type: "scan",
           source_status: "processed",
           extra_data: data.extra_details || {},
         },
@@ -256,7 +263,8 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
       .select()
       .single();
 
-    if (invoiceError) return { error: `DB Invoice Error: ${invoiceError.message}` };
+    if (invoiceError)
+      return { error: `DB Invoice Error: ${invoiceError.message}` };
 
     // ─── 5. إدخال البنود ───
     if (data.items && Array.isArray(data.items) && data.items.length > 0) {
@@ -272,22 +280,24 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
         }));
 
       if (invoiceItems.length > 0) {
-        const { error: itemsError } = await supabase.from("invoice_items").insert(invoiceItems);
-        if (itemsError) console.error("Failed to insert items:", itemsError.message);
+        const { error: itemsError } = await supabase
+          .from("invoice_items")
+          .insert(invoiceItems);
+        if (itemsError)
+          console.error("Failed to insert items:", itemsError.message);
       }
     }
 
     // ─── 6. ربط المرفق بالفاتورة وتحديث حالته ───
     await supabase
       .from("invoice_attachments")
-      .update({ 
+      .update({
         invoice_id: invoice.invoice_id,
-        processing_status: "processed" 
+        processing_status: "processed",
       })
       .eq("attachment_id", attachment_id);
 
     return { success: true, invoice, extracted_data: data };
-
   } catch (error) {
     return { error: error.message };
   }
@@ -307,11 +317,16 @@ export const uploadReceiptAttachment = async (users_id, file, body = {}) => {
 
     const { error: uploadError } = await supabase.storage
       .from(BUCKET_NAME)
-      .upload(filePath, file.buffer, { contentType: file.mimetype, upsert: false });
+      .upload(filePath, file.buffer, {
+        contentType: file.mimetype,
+        upsert: false,
+      });
 
     if (uploadError) return { error: uploadError.message };
 
-    const { data: publicUrlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
+    const { data: publicUrlData } = supabase.storage
+      .from(BUCKET_NAME)
+      .getPublicUrl(filePath);
 
     const { data: attachment, error: insertError } = await supabase
       .from("invoice_attachments")
@@ -427,14 +442,19 @@ export const getUserReceipts = async (users_id, filters = {}) => {
     query = query.gte("issued_at", start.toISOString());
   }
   if (filters.period === "year") {
-    query = query.gte("issued_at", new Date(new Date().getFullYear(), 0, 1).toISOString());
+    query = query.gte(
+      "issued_at",
+      new Date(new Date().getFullYear(), 0, 1).toISOString(),
+    );
   }
-  if (filters.categorie_id) query = query.eq("categorie_id", filters.categorie_id);
+  if (filters.categorie_id)
+    query = query.eq("categorie_id", filters.categorie_id);
   if (filters.unclassified === "true") query = query.is("categorie_id", null);
-  
-  
+
   if (filters.search) {
-    query = query.or(`merchant_name.ilike.%${filters.search}%,invoice_number.ilike.%${filters.search}%,title.ilike.%${filters.search}%`);
+    query = query.or(
+      `merchant_name.ilike.%${filters.search}%,invoice_number.ilike.%${filters.search}%,title.ilike.%${filters.search}%`,
+    );
   }
 
   const { data: receipts, error } = await query;
@@ -445,7 +465,9 @@ export const getUserReceipts = async (users_id, filters = {}) => {
 export const getReceiptById = async (invoice_id, users_id) => {
   const { data: receipt, error } = await supabase
     .from("invoice")
-    .select(`*, invoice_items (*), merchant (*), categories (*), invoice_attachments (*)`)
+    .select(
+      `*, invoice_items (*), merchant (*), categories (*), invoice_attachments (*)`,
+    )
     .eq("invoice_id", invoice_id)
     .eq("users_id", users_id)
     .eq("is_deleted", false)
@@ -469,8 +491,8 @@ export const deleteReceipt = async (invoice_id, users_id) => {
       await supabase.storage
         .from(BUCKET_NAME) // التعديل هنا لاستخدام المتغير المعرف في أعلى الملف
         .remove([attachment.storage_path]);
-      
-      // ملاحظة: إذا كان عندك Cascade في قاعدة البيانات، سجل المرفق سينحذف تلقائياً 
+
+      // ملاحظة: إذا كان عندك Cascade في قاعدة البيانات، سجل المرفق سينحذف تلقائياً
       // عند حذف الفاتورة، لكن لا ضرر من حذف السجل يدوياً هنا للأمان
       await supabase
         .from("invoice_attachments")
