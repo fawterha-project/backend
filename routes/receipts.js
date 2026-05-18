@@ -45,10 +45,9 @@ router.post("/upload", authMiddleware, upload.single("file"), async (req, res) =
   }
 });
 
-// 2. استخراج البيانات بالذكاء الاصطناعي (لعرضها في شاشة المراجعة قبل الحفظ)
 router.post("/attachments/:id/process", authMiddleware, async (req, res) => {
   try {
-    // 💡 نستخدم دالة الاستخراج فقط لترجع البيانات للتطبيق
+  
     const result = await extractInvoiceDataWithAI(
       req.params.id,
       req.user.users_id
@@ -60,7 +59,7 @@ router.post("/attachments/:id/process", authMiddleware, async (req, res) => {
       });
     }
 
-    // نرجع البيانات المستخرجة للموبايل عشان يعرضها للمستخدم يراجعها
+  
     res.status(200).json({
       message: "Data extracted successfully",
       extracted_data: result.extracted
@@ -72,11 +71,11 @@ router.post("/attachments/:id/process", authMiddleware, async (req, res) => {
   }
 });
 
-// 3. الحفظ النهائي (بعد ضغط المستخدم على زر "حفظ" في الموبايل)
+
 router.post("/attachments/:id/create-invoice", authMiddleware, async (req, res) => {
     try {
-      // هذه الدالة ستقوم بالاستخراج والحفظ النهائي
-      // (ملاحظة: يمكنك لاحقاً جعل هذا الراوت يستقبل البيانات التي عدلها المستخدم في الشاشة بدلاً من الاعتماد الكلي على الذكاء الاصطناعي مجدداً)
+     
+     
       const result = await createInvoiceFromAttachment(
         req.params.id,
         req.user.users_id
