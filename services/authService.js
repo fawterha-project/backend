@@ -2,7 +2,6 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import supabase from "../supabaseClient.js";
 import { sendVerificationCode } from "./emailService.js";
-//import { sendSMSOTP } from "./smsService.js";
 import process from "node:process";
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -377,7 +376,7 @@ export async function resetPassword(email, code, newPassword) {
     })
     .eq("email", email);
 
-  //  هنا المهم
+  
   await supabase
     .from("verification_code")
     .update({ is_used: true })

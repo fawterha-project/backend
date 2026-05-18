@@ -13,7 +13,6 @@ function getFileType(mimeType) {
   return null;
 }
 
-// دالة مساعدة نظيفة: إذا القيمة غير موجودة ترجع null (بدون ترقيع أصفار)
 const parseNumber = (val) => {
   if (val === null || val === undefined || val === "") return null;
   const num = Number(val);
@@ -21,7 +20,7 @@ const parseNumber = (val) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// Prompt الاستخراج - مع قواعد اللغة العربية الصارمة وعدم التأليف
+// Prompt 
 // ─────────────────────────────────────────────────────────────
 const INVOICE_EXTRACTION_PROMPT = `
 You are a highly accurate invoice data extraction system. Your job is to extract data exactly as it appears on the invoice image or PDF.
@@ -91,12 +90,12 @@ Required JSON Structure:
 `;
 
 const generationConfig = {
-  temperature: 0.1, // تقليل الإبداع لضمان الدقة وتجنب الهلوسة
+  temperature: 0.1, 
   responseMimeType: "application/json",
 };
 
 // ─────────────────────────────────────────────────────────────
-// استخراج ذكي باستخدام Gemini API
+// استخراج باستخدام Gemini API
 // ─────────────────────────────────────────────────────────────
 export const extractInvoiceDataWithAI = async (attachment_id, users_id) => {
   try {
@@ -142,7 +141,7 @@ export const extractInvoiceDataWithAI = async (attachment_id, users_id) => {
       return { error: "Gemini returned invalid JSON", raw_response: rawText };
     }
 
-    // تحديث حالة المرفق
+    
     await supabase
       .from("invoice_attachments")
       .update({
@@ -168,7 +167,7 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
 
     const data = aiResult.extracted;
 
-    // ─── 1. منطق التحقق: هل هذه فاتورة؟ ───
+    
     if (data.is_invoice === false) {
       await supabase
         .from("invoice_attachments")
@@ -184,10 +183,10 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
       };
     }
 
-    // ─── 2. منطق التصنيف التلقائي (الجديد) ───
+    
     let categoryId = null;
     if (data.suggested_category) {
-      // البحث عن الـ ID الخاص بالتصنيف بناءً على الاسم العربي القادم من Gemini
+      
       const { data: categoryData } = await supabase
         .from("categories")
         .select("categorie_id")
@@ -197,11 +196,10 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
       if (categoryData) {
         categoryId = categoryData.categorie_id;
       }
-      // ملاحظة: إذا لم يجد تطابق، سيبقى categoryId = null
-      // وهذا يعني أنها ستظهر تلقائياً في قسم "غير مصنفة"
+    
     }
 
-    // ─── 3. تجهيز بيانات التاجر والوقت ───
+    
     const issuedAt = data.date ? new Date(data.date).toISOString() : null;
     let merchantId = null;
     const merchantName = data.merchant_name?.trim();
@@ -234,7 +232,7 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
       }
     }
 
-    // ─── 4. إدخال الفاتورة الرئيسية (مع التصنيف) ───
+   
     const { data: invoice, error: invoiceError } = await supabase
       .from("invoice")
       .insert([
@@ -266,7 +264,7 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
     if (invoiceError)
       return { error: `DB Invoice Error: ${invoiceError.message}` };
 
-    // ─── 5. إدخال البنود ───
+    
     if (data.items && Array.isArray(data.items) && data.items.length > 0) {
       const invoiceItems = data.items
         .filter((item) => item.name || item.raw_line)
@@ -288,7 +286,7 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
       }
     }
 
-    // ─── 6. ربط المرفق بالفاتورة وتحديث حالته ───
+    
     await supabase
       .from("invoice_attachments")
       .update({
@@ -303,8 +301,7 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
   }
 };
 
-// ─────────────────────────────────────────────────────────────
-// دوال المرفقات (كما هي)
+
 // ─────────────────────────────────────────────────────────────
 export const uploadReceiptAttachment = async (users_id, file, body = {}) => {
   try {
@@ -424,7 +421,6 @@ export const deleteAttachment = async (attachment_id, users_id) => {
   }
 };
 
-// ─────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────
 export const getUserReceipts = async (users_id, filters = {}) => {
@@ -479,28 +475,27 @@ export const getReceiptById = async (invoice_id, users_id) => {
 
 export const deleteReceipt = async (invoice_id, users_id) => {
   try {
-    // 1. جلب بيانات المرفق (تأكد من استخدام storage_path وليس file_path)
+   
     const { data: attachment } = await supabase
       .from("invoice_attachments")
-      .select("attachment_id, storage_path") // التعديل هنا
+      .select("attachment_id, storage_path") 
       .eq("invoice_id", invoice_id)
-      .maybeSingle(); // استخدام maybeSingle أفضل لتجنب الأخطاء إذا لم يوجد مرفق
+      .maybeSingle(); 
 
-    // 2. إذا وجد مرفق، نحذفه من الـ Storage
+
     if (attachment && attachment.storage_path) {
       await supabase.storage
-        .from(BUCKET_NAME) // التعديل هنا لاستخدام المتغير المعرف في أعلى الملف
+        .from(BUCKET_NAME) 
         .remove([attachment.storage_path]);
 
-      // ملاحظة: إذا كان عندك Cascade في قاعدة البيانات، سجل المرفق سينحذف تلقائياً
-      // عند حذف الفاتورة، لكن لا ضرر من حذف السجل يدوياً هنا للأمان
+      
       await supabase
         .from("invoice_attachments")
         .delete()
         .eq("attachment_id", attachment.attachment_id);
     }
 
-    // 3. حذف الفاتورة نهائياً
+    //  حذف الفاتورة نهائياً
     const { error: invoiceError } = await supabase
       .from("invoice")
       .delete()
