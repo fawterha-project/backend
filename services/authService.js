@@ -30,24 +30,41 @@ function validatePassword(password) {
 
 export async function registerUser(first_name, last_name, email, password) {
   validatePassword(password);
+
+  const sanitizedEmail = email.trim().toLowerCase();
+
+  // 1. التحقق من عدم تكرار الحساب
   const { data: existingUser } = await supabase
     .from("users")
     .select("users_id")
-    .eq("email", email)
+    .eq("email", sanitizedEmail)
     .maybeSingle();
 
   if (existingUser) {
     throw new Error("Email already exists");
   }
+
+  const code = Math.floor(Math.random() * 10000)
+    .toString()
+    .padStart(4, "0");
+
+  const expiresAt = new Date();
+  expiresAt.setMinutes(expiresAt.getMinutes() + 10);
+
+  
+  await sendVerificationCode(sanitizedEmail, code);
+
+  
   const password_hash = await bcrypt.hash(password, 10);
 
+ 
   const { data: user, error } = await supabase
     .from("users")
     .insert([
       {
         first_name,
         last_name,
-        email,
+        email: sanitizedEmail,
         password_hash,
         is_verified: false,
       },
@@ -57,27 +74,23 @@ export async function registerUser(first_name, last_name, email, password) {
 
   if (error) throw new Error(error.message);
 
-  //  كود التحقق
-  const code = Math.floor(Math.random() * 10000)
-    .toString()
-    .padStart(4, "0");
+  
+  const { error: codeError } = await supabase
+    .from("verification_code")
+    .insert([
+      {
+        user_id: user.users_id,
+        code,
+        code_type: "email",
+        target: user.email,
+        purpose: "signup",
+        expires_at: expiresAt.toISOString(),
+      },
+    ]);
 
-  const expiresAt = new Date();
-  expiresAt.setMinutes(expiresAt.getMinutes() + 10);
+  if (codeError) throw new Error(codeError.message);
 
-  await supabase.from("verification_code").insert([
-    {
-      user_id: user.users_id,
-      code,
-      code_type: "email",
-      target: user.email,
-      purpose: "signup",
-      expires_at: expiresAt.toISOString(),
-    },
-  ]);
-
-  await sendVerificationCode(user.email, code);
-
+  
   return {
     message: "Account created. Verification code sent to email",
   };

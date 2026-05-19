@@ -1,5 +1,6 @@
 import express from "express";
 import dotenv from "dotenv";
+import cors from "cors";//
 import authRouter from "./routes/auth.js";
 import receiptsRouter from "./routes/receipts.js";
 import notificationsRouter from "./routes/notifications.js";
@@ -11,6 +12,8 @@ import process from "node:process";
 
 dotenv.config();
 const app = express();
+
+app.use(cors()); //
 
 app.use(morgan("dev"));
 
@@ -30,3 +33,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
