@@ -31,11 +31,14 @@ router.post("/register", async (req, res) => {
   } catch (error) {
     // فحص نصوص الخطأ القادمة من السيرفس وترجمتها بدقة
     let errMsg = "عذراً، فشل إنشاء الحساب. تأكد من البيانات المدخلة";
-    
+
     if (error.message.includes("Email already exists")) {
       errMsg = "هذا البريد الإلكتروني مسجل بالفعل";
-    } else if (error.message.includes("Password must be at least 8 characters")) {
-      errMsg = "يجب أن تكون كلمة السر من 8 خانات وتحتوي على حرف كبير، رقم، ورمز خاص";
+    } else if (
+      error.message.includes("Password must be at least 8 characters")
+    ) {
+      errMsg =
+        "يجب أن تكون كلمة السر من 8 خانات وتحتوي على حرف كبير، رقم، ورمز خاص";
     }
 
     res.status(400).json({
@@ -57,8 +60,11 @@ router.post("/login", async (req, res) => {
     });
   } catch (error) {
     let errMsg = "عذراً، تعذر تسجيل الدخول حالياً";
-    
-    if (error.message.includes("Invalid email or password") || error.message.includes("Invalid login credentials")) {
+
+    if (
+      error.message.includes("Invalid email or password") ||
+      error.message.includes("Invalid login credentials")
+    ) {
       errMsg = "البريد الإلكتروني أو كلمة المرور غير صحيحة";
     } else if (error.message.includes("Please verify your email first")) {
       errMsg = "يرجى التحقق من بريدك الإلكتروني أولاً لتفعيل الحساب";
@@ -126,7 +132,10 @@ router.delete("/account", authMiddleware, async (req, res) => {
     });
   } catch (error) {
     let errMsg = "عذراً، فشل إجراء حذف الحساب حالياً";
-    if (error.message.includes("Invalid password") || error.message.includes("Password is required")) {
+    if (
+      error.message.includes("Invalid password") ||
+      error.message.includes("Password is required")
+    ) {
       errMsg = "كلمة المرور المدخلة غير صحيحة";
     }
 
@@ -143,7 +152,7 @@ router.post("/forgot-password", async (req, res) => {
     await forgotPassword(email);
 
     res.status(200).json({
-      message: "تم إرسال رمز التحقق إلى بريدك الإلكتروني بنجاح"
+      message: "تم إرسال رمز التحقق إلى بريدك الإلكتروني بنجاح",
     });
   } catch (error) {
     let errMsg = "تأكد من صحة البريد الإلكتروني المدخل";
@@ -161,7 +170,7 @@ router.post("/verify-code", async (req, res) => {
     await verifyCode(email, code);
 
     res.status(200).json({
-      message: "تم التحقق من الرمز بنجاح، يمكنك الآن تعيين كلمة السر"
+      message: "تم التحقق من الرمز بنجاح، يمكنك الآن تعيين كلمة السر",
     });
   } catch (error) {
     let errMsg = "الرمز المدخل غير صحيح، يرجى إعادة المحاولة";
@@ -179,13 +188,17 @@ router.post("/reset-password", async (req, res) => {
     await resetPassword(email, code, newPassword);
 
     res.status(200).json({
-      message: "تم إعادة تعيين كلمة السر بنجاح، يمكنك تسجيل الدخول الآن"
+      message: "تم إعادة تعيين كلمة السر بنجاح، يمكنك تسجيل الدخول الآن",
     });
   } catch (error) {
     let errMsg = "فشلت عملية تعيين كلمة السر، يرجى المحاولة مجدداً";
     if (error.message.includes("Password must be at least 8 characters")) {
-      errMsg = "يجب أن تكون كلمة السر من 8 خانات وتحتوي على حرف كبير، رقم، ورمز خاص";
-    } else if (error.message.includes("Invalid code") || error.message.includes("Code expired")) {
+      errMsg =
+        "يجب أن تكون كلمة السر من 8 خانات وتحتوي على حرف كبير، رقم، ورمز خاص";
+    } else if (
+      error.message.includes("Invalid code") ||
+      error.message.includes("Code expired")
+    ) {
       errMsg = "رمز التحقق غير صحيح أو منتهي الصلاحية";
     }
     res.status(400).json({ message: errMsg });
@@ -199,7 +212,7 @@ router.post("/resend-code", async (req, res) => {
     await resendCode(email, purpose);
 
     res.status(200).json({
-      message: "تم إعادة إرسال رمز التحقق بنجاح إلى بريدك"
+      message: "تم إعادة إرسال رمز التحقق بنجاح إلى بريدك",
     });
   } catch (error) {
     let errMsg = "فشل إعادة إرسال الرمز، يرجى المحاولة بعد قليل";
@@ -220,7 +233,7 @@ router.post("/verify-signup", async (req, res) => {
 
     res.status(200).json({
       message: "تم تفعيل حسابك بنجاح، أهلاً بك في فواتيرها 🎉",
-      token: result.token
+      token: result.token,
     });
   } catch (error) {
     let errMsg = "رمز تفعيل الحساب غير صحيح، يرجى إعادة المحاولة";
@@ -239,23 +252,22 @@ router.patch("/change-password", authMiddleware, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
 
-    await changePassword(
-      req.user.users_id,
-      currentPassword,
-      newPassword
-    );
+    await changePassword(req.user.users_id, currentPassword, newPassword);
 
     res.status(200).json({
-      message: "تم تحديث كلمة السر بنجاح، يرجى تسجيل الدخول مجدداً"
+      message: "تم تحديث كلمة السر بنجاح، يرجى تسجيل الدخول مجدداً",
     });
   } catch (error) {
     let errMsg = "عذراً، فشل تغيير كلمة السر، يرجى المحاولة مجدداً";
     if (error.message.includes("Current password is incorrect")) {
       errMsg = "كلمة السر الحالية غير صحيحة";
-    } else if (error.message.includes("Password must be at least 8 characters")) {
-      errMsg = "يجب أن تكون كلمة السر الجديدة من 8 خانات وتحتوي على حرف كبير ورقم ورمز";
+    } else if (
+      error.message.includes("Password must be at least 8 characters")
+    ) {
+      errMsg =
+        "يجب أن تكون كلمة السر الجديدة من 8 خانات وتحتوي على حرف كبير ورقم ورمز";
     }
-    
+
     res.status(400).json({
       message: errMsg,
     });

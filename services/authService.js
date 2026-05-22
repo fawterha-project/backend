@@ -17,6 +17,7 @@ function createToken(user) {
     { expiresIn: JWT_EXPIRES_IN },
   );
 }
+
 function validatePassword(password) {
   const passwordRegex =
     /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>]).{8,}$/;
@@ -33,7 +34,6 @@ export async function registerUser(first_name, last_name, email, password) {
 
   const sanitizedEmail = email.trim().toLowerCase();
 
-  // 1. التحقق من عدم تكرار الحساب
   const { data: existingUser } = await supabase
     .from("users")
     .select("users_id")
@@ -51,13 +51,8 @@ export async function registerUser(first_name, last_name, email, password) {
   const expiresAt = new Date();
   expiresAt.setMinutes(expiresAt.getMinutes() + 10);
 
-  
-  await sendVerificationCode(sanitizedEmail, code);
-
-  
   const password_hash = await bcrypt.hash(password, 10);
 
- 
   const { data: user, error } = await supabase
     .from("users")
     .insert([
@@ -74,23 +69,24 @@ export async function registerUser(first_name, last_name, email, password) {
 
   if (error) throw new Error(error.message);
 
-  
-  const { error: codeError } = await supabase
-    .from("verification_code")
-    .insert([
-      {
-        user_id: user.users_id,
-        code,
-        code_type: "email",
-        target: user.email,
-        purpose: "signup",
-        expires_at: expiresAt.toISOString(),
-      },
-    ]);
+  const { error: codeError } = await supabase.from("verification_code").insert([
+    {
+      user_id: user.users_id,
+      code,
+      code_type: "email",
+      target: user.email,
+      purpose: "signup",
+      expires_at: expiresAt.toISOString(),
+    },
+  ]);
 
   if (codeError) throw new Error(codeError.message);
 
-  
+  // Send email in background — don't make the user wait
+  sendVerificationCode(user.email, code).catch((err) =>
+    console.error("[register] email send failed:", err),
+  );
+
   return {
     message: "Account created. Verification code sent to email",
   };
@@ -130,7 +126,6 @@ export async function verifySignupCode(email, code) {
     .update({ is_used: true })
     .eq("verification_code_id", data.verification_code_id);
 
-  //  هنا نعطي التوكن
   const token = createToken(user);
   await saveAuthToken(user.users_id, token);
 
@@ -168,6 +163,7 @@ export async function loginUser(email, password) {
   if (!user.is_verified) {
     throw new Error("Please verify your email first");
   }
+
   const token = createToken(user);
   await saveAuthToken(user.users_id, token);
   delete user.password_hash;
@@ -276,6 +272,7 @@ export async function deleteAccount(users_id, password) {
   if (!isPasswordCorrect) {
     throw new Error("Invalid password");
   }
+
   const { error: revokeError } = await supabase
     .from("auth_tokens")
     .update({
@@ -287,6 +284,7 @@ export async function deleteAccount(users_id, password) {
   if (revokeError) {
     throw new Error(revokeError.message);
   }
+
   const { error: deleteError } = await supabase
     .from("users")
     .delete()
@@ -313,7 +311,6 @@ export async function forgotPassword(email) {
   if (error) throw new Error(error.message);
   if (!user) throw new Error("User not found");
 
-  // generate 4-digit code
   const code = Math.floor(1000 + Math.random() * 9000).toString();
 
   const expiresAt = new Date();
@@ -334,7 +331,10 @@ export async function forgotPassword(email) {
 
   if (insertError) throw new Error(insertError.message);
 
-  await sendVerificationCode(email, code);
+  // Send email in background
+  sendVerificationCode(email, code).catch((err) =>
+    console.error("[forgotPassword] email send failed:", err),
+  );
 
   return { message: "Verification code sent to email" };
 }
@@ -378,6 +378,7 @@ export async function resetPassword(email, code, newPassword) {
   if (new Date(data.expires_at) < new Date()) {
     throw new Error("Code expired");
   }
+
   validatePassword(newPassword);
   const password_hash = await bcrypt.hash(newPassword, 10);
 
@@ -389,7 +390,6 @@ export async function resetPassword(email, code, newPassword) {
     })
     .eq("email", email);
 
-  
   await supabase
     .from("verification_code")
     .update({ is_used: true })
@@ -412,7 +412,6 @@ export async function resendCode(email, purpose) {
   if (error) throw new Error(error.message);
   if (!user) throw new Error("User not found");
 
-  // generate new code (4 digits)
   const code = Math.floor(Math.random() * 10000)
     .toString()
     .padStart(4, "0");
@@ -435,11 +434,15 @@ export async function resendCode(email, purpose) {
 
   if (insertError) throw new Error(insertError.message);
 
-  await sendVerificationCode(email, code);
+  // Send email in background
+  sendVerificationCode(email, code).catch((err) =>
+    console.error("[resendCode] email send failed:", err),
+  );
 
   return { message: "Code resent successfully" };
 }
-//AKA RESET PASS
+
+// AKA RESET PASS (logged-in user changing their own password)
 export async function changePassword(users_id, currentPassword, newPassword) {
   if (!currentPassword || !newPassword) {
     throw new Error("Current password and new password are required");
