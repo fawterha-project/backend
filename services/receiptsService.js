@@ -4,6 +4,17 @@ import { GoogleGenAI } from "@google/genai";
 import crypto from "crypto";
 import process from "process";
 
+// القاموس المسؤول عن ترجمة الأسماء الطويلة من قاعدة البيانات إلى أسماء قصيرة للفرونت إند
+const categoryMapper = {
+  "المقاضي والبيت": "المقاضي",
+  "المطاعم والترفيه": "المطاعم",
+  "التسوق والأناقة": "التسوق",
+  "النقل والسيارة": "النقل",
+  "الصحة والعافية": "الصحة",
+  "الفواتير والالتزامات": "الالتزامات",
+  "أخرى": "اخرى"
+}; 
+
 const BUCKET_NAME = "invoice-files";
 const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -38,8 +49,9 @@ CRITICAL VALIDATION RULE:
 - First, check if the image is a financial receipt or invoice. 
 - If the image is NOT a receipt or invoice (e.g., a person, a landscape, or a random document), return ONLY this JSON: {"is_invoice": false} and stop.
 - If it IS a receipt, return the full JSON structure with "is_invoice": true.
-
 Your job is to extract data exactly as it appears...
+
+- Extract 'tendered_amount' (cash given) and 'change_amount' (cash returned) only if they are explicitly mentioned. If they are not present, set them to null.
 
 CLASSIFICATION RULE:
 Identify the correct category for this receipt from the following list ONLY. Use the merchant name and items to decide:
@@ -75,6 +87,8 @@ Required JSON Structure:
     "branch_name": null,
     "cashier_name": null,
     "return_policy": null
+    "tendered_amount": null,
+    "change_amount": null,
   },
   "items": [
     {
@@ -90,7 +104,7 @@ Required JSON Structure:
 `;
 
 const generationConfig = {
-  temperature: 0.1, 
+  temperature: 0, 
   responseMimeType: "application/json",
 };
 
@@ -455,7 +469,23 @@ export const getUserReceipts = async (users_id, filters = {}) => {
 
   const { data: receipts, error } = await query;
   if (error) return { error: error.message };
-  return { receipts };
+
+  // تطبيق القاموس على الاسم الطويل الموجود داخل جدول categories
+  const formattedReceipts = receipts.map(receipt => {
+    // نأخذ نسخة من بيانات الفاتورة
+    let updatedReceipt = { ...receipt };
+    
+    // إذا كانت الفاتورة لها تصنيف (مو null)، نبدل اسمها الطويل للقصير
+    if (updatedReceipt.categories && updatedReceipt.categories.categorie_name) {
+      updatedReceipt.categories.categorie_name = 
+        categoryMapper[updatedReceipt.categories.categorie_name] || updatedReceipt.categories.categorie_name;
+    }
+
+    return updatedReceipt;
+  });
+
+ 
+  return { receipts: formattedReceipts };
 };
 
 export const getReceiptById = async (invoice_id, users_id) => {
@@ -470,6 +500,13 @@ export const getReceiptById = async (invoice_id, users_id) => {
     .single();
 
   if (error) return { error: error.message };
+
+  // 🌟 كود تبديل الاسم الطويل للقصير قبل الإرسال 🌟
+  if (receipt && receipt.categories && receipt.categories.categorie_name) {
+    receipt.categories.categorie_name = 
+      categoryMapper[receipt.categories.categorie_name] || receipt.categories.categorie_name;
+  }
+
   return { receipt };
 };
 
@@ -509,4 +546,21 @@ export const deleteReceipt = async (invoice_id, users_id) => {
     console.error("Delete Error:", error.message);
     return { error: error.message };
   }
+};
+export const updateInvoiceCategory = async (invoice_id, users_id, categorie_id) => {
+  const { data, error } = await supabase
+    .from("invoice")
+    .update({ categorie_id: categorie_id })
+    .eq("invoice_id", invoice_id)
+    .eq("users_id", users_id) 
+    .select(); //
+
+  if (error) return { error: error.message };
+
+  //  حماية إضافية: إذا الفاتورة مو موجودة أو اليوزر ما يملكها
+  if (!data || data.length === 0) {
+    return { error: "الفاتورة غير موجودة أو ليس لديك صلاحية لتعديلها." };
+  }
+
+  return { success: true, message: "تم تحديث التصنيف بنجاح", invoice: data[0] };
 };

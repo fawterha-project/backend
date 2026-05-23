@@ -232,7 +232,7 @@ router.post("/verify-signup", async (req, res) => {
     const result = await verifySignupCode(email, code);
 
     res.status(200).json({
-      message: "تم تفعيل حسابك بنجاح، أهلاً بك في فواتيرها 🎉",
+      message: "تم تفعيل حسابك بنجاح، أهلاً بك في فوترها 🎉",
       token: result.token,
     });
   } catch (error) {

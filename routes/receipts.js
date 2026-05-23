@@ -12,6 +12,7 @@ import {
   deleteReceipt,
   extractInvoiceDataWithAI, 
   createInvoiceFromAttachment,
+  updateInvoiceCategory,
 } from "../services/receiptsService.js";
 
 const router = express.Router();
@@ -95,6 +96,30 @@ router.post("/attachments/:id/create-invoice", authMiddleware, async (req, res) 
     }
   }
 );
+
+router.put("/:id/update-category", authMiddleware, async (req, res) => {
+  try {
+    const { categorie_id } = req.body; // نأخذ التصنيف الجديد من الـ Body
+
+    if (!categorie_id) {
+      return res.status(400).json({ message: "categorie_id is required" });
+    }
+
+    const result = await updateInvoiceCategory(
+      req.params.id,       // الـ invoice_id من الرابط
+      req.user.users_id,   // الـ users_id من التوكن لحماية البيانات
+      categorie_id         // الـ ID الجديد للتصنيف
+    );
+
+    if (result.error) {
+      return res.status(400).json({ message: result.error });
+    }
+
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 
 // Get user uploaded attachments
 router.get("/attachments", authMiddleware, async (req, res) => {
