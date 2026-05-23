@@ -1,7 +1,6 @@
 import cors from 'cors';
 import express from "express";
 import dotenv from "dotenv";
-import cors from "cors";//
 import authRouter from "./routes/auth.js";
 import receiptsRouter from "./routes/receipts.js";
 import notificationsRouter from "./routes/notifications.js";
@@ -13,7 +12,7 @@ import process from "node:process";
 
 dotenv.config();
 const app = express();
-const cors = require('cors');
+//const cors = require('cors');
 
 app.use(cors()); //
 
