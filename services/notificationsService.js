@@ -167,14 +167,17 @@ export const getUnreadCount = async (users_id) => {
   return { unread: count ?? 0 };
 };
 
-export const markAsRead = async (notification_id) => {
+// markAsRead — now requires users_id and verifies ownership
+export const markAsRead = async (notification_id, users_id) => {
   const { data, error } = await supabase
     .from("notifications")
     .update({ is_read: true })
     .eq("notification_id", notification_id)
+    .eq("user_id", users_id)
     .select()
-    .single();
+    .maybeSingle();
   if (error) return { error: error.message };
+  if (!data) return { error: "Notification not found or not yours" };
   return { notification: data };
 };
 
@@ -188,12 +191,18 @@ export const markAllAsRead = async (users_id) => {
   return { success: true };
 };
 
-export const deleteNotification = async (notification_id) => {
-  const { error } = await supabase
+// deleteNotification — now requires users_id and verifies ownership
+export const deleteNotification = async (notification_id, users_id) => {
+  const { data, error } = await supabase
     .from("notifications")
     .delete()
-    .eq("notification_id", notification_id);
+    .eq("notification_id", notification_id)
+    .eq("user_id", users_id)
+    .select();
   if (error) return { error: error.message };
+  if (!data || data.length === 0) {
+    return { error: "Notification not found or not yours" };
+  }
   return { success: true };
 };
 

@@ -1,4 +1,6 @@
 import express from "express";
+import { authMiddleware } from "../middleware/authMiddleware.js";
+import { requireExternalApiKey } from "../middleware/externalApiKey.js";
 import {
   getUserNotifications,
   getUnreadCount,
@@ -9,55 +11,35 @@ import {
 
 const router = express.Router();
 
-// GET /notifications?users_id=...
-router.get("/", async (req, res) => {
-  const { users_id } = req.query;
-  if (!users_id) {
-    return res.status(400).json({ error: "users_id is required" });
-  }
-  const result = await getUserNotifications(users_id);
-  if (result.error) {
-    return res.status(400).json({ error: result.error });
-  }
+// ────────────────────────────────────────────────────────────
+// User-facing routes (require JWT)
+// ────────────────────────────────────────────────────────────
+
+// GET /notifications
+router.get("/", authMiddleware, async (req, res) => {
+  const result = await getUserNotifications(req.user.users_id);
+  if (result.error) return res.status(400).json({ error: result.error });
   res.status(200).json({ notifications: result.notifications });
 });
 
-// GET /notifications/unread-count?users_id=...
-router.get("/unread-count", async (req, res) => {
-  const { users_id } = req.query;
-  if (!users_id) {
-    return res.status(400).json({ error: "users_id is required" });
-  }
-  const result = await getUnreadCount(users_id);
-  if (result.error) {
-    return res.status(400).json({ error: result.error });
-  }
+// GET /notifications/unread-count
+router.get("/unread-count", authMiddleware, async (req, res) => {
+  const result = await getUnreadCount(req.user.users_id);
+  if (result.error) return res.status(400).json({ error: result.error });
   res.status(200).json({ unread: result.unread });
 });
 
-// PATCH /notifications/read-all   body: { users_id }
-router.patch("/read-all", async (req, res) => {
-  const { users_id } = req.body;
-  if (!users_id) {
-    return res.status(400).json({ error: "users_id is required" });
-  }
-  const result = await markAllAsRead(users_id);
-  if (result.error) {
-    return res.status(400).json({ error: result.error });
-  }
+// PATCH /notifications/read-all
+router.patch("/read-all", authMiddleware, async (req, res) => {
+  const result = await markAllAsRead(req.user.users_id);
+  if (result.error) return res.status(400).json({ error: result.error });
   res.status(200).json({ message: "All notifications marked as read" });
 });
 
 // PATCH /notifications/:id/read
-router.patch("/:id/read", async (req, res) => {
-  const { id } = req.params;
-  if (!id) {
-    return res.status(400).json({ error: "notification_id is required" });
-  }
-  const result = await markAsRead(id);
-  if (result.error) {
-    return res.status(400).json({ error: result.error });
-  }
+router.patch("/:id/read", authMiddleware, async (req, res) => {
+  const result = await markAsRead(req.params.id, req.user.users_id);
+  if (result.error) return res.status(400).json({ error: result.error });
   res.status(200).json({
     message: "Notification marked as read",
     notification: result.notification,
@@ -65,21 +47,19 @@ router.patch("/:id/read", async (req, res) => {
 });
 
 // DELETE /notifications/:id
-router.delete("/:id", async (req, res) => {
-  const { id } = req.params;
-  if (!id) {
-    return res.status(400).json({ error: "notification_id is required" });
-  }
-  const result = await deleteNotification(id);
-  if (result.error) {
-    return res.status(400).json({ error: result.error });
-  }
+router.delete("/:id", authMiddleware, async (req, res) => {
+  const result = await deleteNotification(req.params.id, req.user.users_id);
+  if (result.error) return res.status(400).json({ error: result.error });
   res.status(200).json({ message: "Notification deleted successfully" });
 });
 
-// Cron-like endpoint — call this from pg_cron or manually to dispatch
-// scheduled notifications whose time has come.
-router.post("/run-due", async (req, res) => {
+// ────────────────────────────────────────────────────────────
+// Admin / cron endpoints (require X-API-Key header)
+// pg_cron uses the SQL functions directly, so these HTTP routes
+// are only for manual testing or external schedulers.
+// ────────────────────────────────────────────────────────────
+
+router.post("/run-due", requireExternalApiKey, async (req, res) => {
   const { runDueNotifications } =
     await import("../services/notificationsService.js");
   const result = await runDueNotifications();
@@ -87,7 +67,7 @@ router.post("/run-due", async (req, res) => {
   res.status(200).json({ dispatched: result.dispatched });
 });
 
-router.post("/run-monthly-reports", async (req, res) => {
+router.post("/run-monthly-reports", requireExternalApiKey, async (req, res) => {
   const { runMonthlyReportReminders } =
     await import("../services/notificationsService.js");
   const result = await runMonthlyReportReminders();
