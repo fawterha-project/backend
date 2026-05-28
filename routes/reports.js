@@ -9,15 +9,9 @@ import {
 
 const router = express.Router();
 
-// All report routes require a valid JWT — users_id comes from the token
+// All report routes require a valid JWT.
+// users_id comes from the token via authMiddleware (sets req.user.users_id).
 router.use(authMiddleware);
-
-// GET /reports/summary
-router.get("/summary", async (req, res) => {
-  const result = await getSummary(req.user.users_id);
-  if (result.error) return res.status(400).json({ error: result.error });
-  res.status(200).json(result);
-});
 
 // GET /reports/weekly
 router.get("/weekly", async (req, res) => {
@@ -33,7 +27,7 @@ router.get("/monthly", async (req, res) => {
   res.status(200).json(result);
 });
 
-// GET /reports/yearly?year=2026   (year is still optional from query)
+// GET /reports/yearly?year=2026   (year is an optional filter, not auth identity)
 router.get("/yearly", async (req, res) => {
   const { year } = req.query;
   const result = await getYearly(req.user.users_id, year);
