@@ -1,6 +1,20 @@
 import supabase from "../supabaseClient.js";
 import process from "node:process";
 
+// Color palette per category — used by the donut chart on the frontend.
+// Keys MUST match the categorie_name values seeded in the categories table.
+const CATEGORY_COLORS = {
+  "المقاضي والبيت": "#4CAF50", // green
+  "المطاعم والترفيه": "#FF9800", // orange
+  "التسوق والأناقة": "#9C27B0", // purple
+  "النقل والسيارة": "#2196F3", // blue
+  "الصحة والعافية": "#E91E63", // pink
+  "الفواتير والالتزامات": "#00BCD4", // cyan
+  أخرى: "#9E9E9E", // gray
+};
+const UNCATEGORIZED_COLOR = "#BDBDBD"; // lighter gray for "غير مصنفة"
+const FALLBACK_COLOR = "#CFD8DC"; // if a future category isn't in the map
+
 // Arabic day names indexed by JS getUTCDay() (0 = Sunday ... 6 = Saturday)
 const ARABIC_DAYS = ["أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"];
 const ARABIC_MONTHS = [
@@ -142,7 +156,7 @@ function groupByMonth(invoices) {
   return buckets;
 }
 
-// Group invoices by category and add percent of total
+// Group invoices by category and add percent of total + display color
 async function groupByCategory(invoices, totalSum) {
   const { data: cats } = await supabase
     .from("categories")
@@ -164,9 +178,11 @@ async function groupByCategory(invoices, totalSum) {
   }
   const result = [];
   for (const [id, total] of totals) {
+    const name = nameById.get(id) || "غير معروفة";
     result.push({
       categorie_id: id,
-      categorie_name: nameById.get(id) || "غير معروفة",
+      categorie_name: name,
+      color: CATEGORY_COLORS[name] || FALLBACK_COLOR,
       total: round2(total),
       percent: totalSum > 0 ? Math.round((total / totalSum) * 1000) / 10 : 0,
     });
@@ -175,6 +191,7 @@ async function groupByCategory(invoices, totalSum) {
     result.push({
       categorie_id: null,
       categorie_name: "غير مصنفة",
+      color: UNCATEGORIZED_COLOR,
       total: round2(uncategorized),
       percent:
         totalSum > 0 ? Math.round((uncategorized / totalSum) * 1000) / 10 : 0,
