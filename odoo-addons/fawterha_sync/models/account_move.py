@@ -5,7 +5,7 @@ from odoo import models
 _logger = logging.getLogger(__name__)
 
 # Odoo and the Fawterha backend run on the same droplet, so localhost is enough.
-FAWTERHA_API_URL = "http://localhost:3000/external/invoices"
+FAWTERHA_API_URL = "http://168.144.118.123/external/invoices"
 FAWTERHA_API_KEY = "fawterha_external_xy7p2k9q3rj8t4nv6m1a5wzcb0eharagft"
 
 
