@@ -1,19 +1,67 @@
 import supabase from "../supabaseClient.js";
 import process from "node:process";
 
-// Color palette per category — used by the donut chart on the frontend.
-// Keys MUST match the categorie_name values seeded in the categories table.
-const CATEGORY_COLORS = {
-  "المقاضي والبيت": "#4CAF50", // green
-  "المطاعم والترفيه": "#FF9800", // orange
-  "التسوق والأناقة": "#9C27B0", // purple
-  "النقل والسيارة": "#2196F3", // blue
-  "الصحة والعافية": "#E91E63", // pink
-  "الفواتير والالتزامات": "#00BCD4", // cyan
-  أخرى: "#9E9E9E", // gray
+// Category visual metadata — single source of truth for the
+// donut chart + category list cards. Frontend reads these
+// fields verbatim, no extra logic needed.
+const CATEGORY_META = {
+  "المقاضي والبيت": {
+    short_name: "المقاضي",
+    icon: "shopping-basket",
+    color: "#22C55E",
+    bg_color: "#EAFBF0",
+  },
+  "المطاعم والترفيه": {
+    short_name: "المطاعم",
+    icon: "restaurant",
+    color: "#2563FF",
+    bg_color: "#EEF4FF",
+  },
+  "التسوق والأناقة": {
+    short_name: "التسوق",
+    icon: "shopping-bag",
+    color: "#A020F0",
+    bg_color: "#F6EAFF",
+  },
+  "النقل والسيارة": {
+    short_name: "النقل",
+    icon: "directions-bus",
+    color: "#FFB000",
+    bg_color: "#FFF6E7",
+  },
+  "الصحة والعافية": {
+    short_name: "الصحة",
+    icon: "favorite",
+    color: "#FF4B5C",
+    bg_color: "#FFECEF",
+  },
+  "الفواتير والالتزامات": {
+    short_name: "الالتزامات",
+    icon: "event",
+    color: "#12C6D7",
+    bg_color: "#EAFBFC",
+  },
+  أخرى: {
+    short_name: "أخرى",
+    icon: "more-horiz",
+    color: "#8C8FA1",
+    bg_color: "#F3F3F6",
+  },
 };
-const UNCATEGORIZED_COLOR = "#BDBDBD"; // lighter gray for "غير مصنفة"
-const FALLBACK_COLOR = "#CFD8DC"; // if a future category isn't in the map
+
+const FALLBACK_META = {
+  short_name: "غير معروفة",
+  icon: "label",
+  color: "#9CA3AF",
+  bg_color: "#F3F4F6",
+};
+
+const UNCATEGORIZED_META = {
+  short_name: "غير مصنفة",
+  icon: "help-outline",
+  color: "#BDBDBD",
+  bg_color: "#F5F5F5",
+};
 
 // Arabic day names indexed by JS getUTCDay() (0 = Sunday ... 6 = Saturday)
 const ARABIC_DAYS = ["أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"];
@@ -55,7 +103,6 @@ function saudiDayOfMonth(date) {
 function startOfWeek(date = new Date()) {
   const sv = toSaudiView(date);
   sv.setUTCHours(0, 0, 0, 0);
-  // Saturday is start of week — JS Sun=0, ..., Sat=6
   const day = sv.getUTCDay();
   const offset = (day + 1) % 7;
   sv.setUTCDate(sv.getUTCDate() - offset);
@@ -78,7 +125,6 @@ function addMonths(date, n) {
   return d;
 }
 
-// % change vs previous period
 function computeChange(current, previous) {
   if (previous === 0) {
     return {
@@ -93,7 +139,6 @@ function computeChange(current, previous) {
   };
 }
 
-// Pull invoices for a user in a date range
 async function fetchInvoices(user_id, start, end) {
   const { data, error } = await supabase
     .from("invoice")
@@ -108,7 +153,6 @@ async function fetchInvoices(user_id, start, end) {
 const sumTotal = (invs) => invs.reduce((s, i) => s + Number(i.total_price), 0);
 const round2 = (n) => Math.round(n * 100) / 100;
 
-// Group invoices into N daily buckets starting from `startDate`
 function groupByDay(invoices, startDate, days) {
   const buckets = [];
   for (let i = 0; i < days; i++) {
@@ -128,7 +172,6 @@ function groupByDay(invoices, startDate, days) {
   return buckets;
 }
 
-// Group invoices in a month into 5 weekly buckets (الأسبوع 1..5)
 function groupByWeek(invoices) {
   const buckets = Array.from({ length: 5 }, (_, i) => ({
     label: `الأسبوع ${i + 1}`,
@@ -142,7 +185,6 @@ function groupByWeek(invoices) {
   return buckets;
 }
 
-// Group invoices in a year into 12 monthly buckets
 function groupByMonth(invoices) {
   const buckets = ARABIC_MONTHS.map((label, i) => ({
     label,
@@ -156,7 +198,9 @@ function groupByMonth(invoices) {
   return buckets;
 }
 
-// Group invoices by category and add percent of total + display color
+// Returns a full design-ready object per category:
+//   categorie_id, categorie_name (short), categorie_name_full,
+//   icon, color, bg_color, total, percent
 async function groupByCategory(invoices, totalSum) {
   const { data: cats } = await supabase
     .from("categories")
@@ -178,11 +222,15 @@ async function groupByCategory(invoices, totalSum) {
   }
   const result = [];
   for (const [id, total] of totals) {
-    const name = nameById.get(id) || "غير معروفة";
+    const fullName = nameById.get(id) || "غير معروفة";
+    const meta = CATEGORY_META[fullName] || FALLBACK_META;
     result.push({
       categorie_id: id,
-      categorie_name: name,
-      color: CATEGORY_COLORS[name] || FALLBACK_COLOR,
+      categorie_name: meta.short_name,
+      categorie_name_full: fullName,
+      icon: meta.icon,
+      color: meta.color,
+      bg_color: meta.bg_color,
       total: round2(total),
       percent: totalSum > 0 ? Math.round((total / totalSum) * 1000) / 10 : 0,
     });
@@ -190,8 +238,11 @@ async function groupByCategory(invoices, totalSum) {
   if (uncategorized > 0) {
     result.push({
       categorie_id: null,
-      categorie_name: "غير مصنفة",
-      color: UNCATEGORIZED_COLOR,
+      categorie_name: UNCATEGORIZED_META.short_name,
+      categorie_name_full: null,
+      icon: UNCATEGORIZED_META.icon,
+      color: UNCATEGORIZED_META.color,
+      bg_color: UNCATEGORIZED_META.bg_color,
       total: round2(uncategorized),
       percent:
         totalSum > 0 ? Math.round((uncategorized / totalSum) * 1000) / 10 : 0,
@@ -200,7 +251,7 @@ async function groupByCategory(invoices, totalSum) {
   return result.sort((a, b) => b.total - a.total);
 }
 
-// Endpoint logic:
+// Endpoint logic
 
 export const getSummary = async (user_id) => {
   const monthStart = startOfMonth();
@@ -208,7 +259,7 @@ export const getSummary = async (user_id) => {
   const prevStart = addMonths(monthStart, -1);
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
-  const sevenDaysAgo = addDays(today, -6); // last 7 days including today
+  const sevenDaysAgo = addDays(today, -6);
 
   const [thisMonth, lastMonth, lastWeek] = await Promise.all([
     fetchInvoices(user_id, monthStart, monthEnd),
@@ -299,7 +350,7 @@ export const getMonthly = async (user_id) => {
 
 export const getYearly = async (user_id, year) => {
   const yearNum = year ? parseInt(year, 10) : new Date().getUTCFullYear();
-  const yearStart = fromSaudiView(new Date(Date.UTC(yearNum, 0, 1))); // adjust for Saudi timezone
+  const yearStart = fromSaudiView(new Date(Date.UTC(yearNum, 0, 1)));
   const yearEnd = fromSaudiView(new Date(Date.UTC(yearNum + 1, 0, 1)));
   const prevStart = fromSaudiView(new Date(Date.UTC(yearNum - 1, 0, 1)));
   const [thisYear, lastYear] = await Promise.all([
