@@ -2,69 +2,55 @@ import supabase from "../supabaseClient.js";
 import process from "node:process";
 
 // Category visual metadata — single source of truth for the
-// donut chart + category list cards. Frontend reads these
-// fields verbatim, no extra logic needed.
+// donut chart + category list cards. Anything without a known
+// category (NULL categorie_id or unknown name) is routed into "أخرى".
 const CATEGORY_META = {
-  "المقاضي والبيت": {
-    short_name: "المقاضي",
+  المقاضي: {
+    name: "المقاضي",
     icon: "shopping-basket",
     color: "#22C55E",
     bg_color: "#EAFBF0",
   },
-  "المطاعم والترفيه": {
-    short_name: "المطاعم",
+  المطاعم: {
+    name: "المطاعم",
     icon: "restaurant",
     color: "#2563FF",
     bg_color: "#EEF4FF",
   },
-  "التسوق والأناقة": {
-    short_name: "التسوق",
+  التسوق: {
+    name: "التسوق",
     icon: "shopping-bag",
     color: "#A020F0",
     bg_color: "#F6EAFF",
   },
-  "النقل والسيارة": {
-    short_name: "النقل",
+  النقل: {
+    name: "النقل",
     icon: "directions-bus",
     color: "#FFB000",
     bg_color: "#FFF6E7",
   },
-  "الصحة والعافية": {
-    short_name: "الصحة",
+  الصحة: {
+    name: "الصحة",
     icon: "favorite",
     color: "#FF4B5C",
     bg_color: "#FFECEF",
   },
-  "الفواتير والالتزامات": {
-    short_name: "الالتزامات",
+  الالتزامات: {
+    name: "الالتزامات",
     icon: "event",
     color: "#12C6D7",
     bg_color: "#EAFBFC",
   },
   أخرى: {
-    short_name: "أخرى",
+    name: "أخرى",
     icon: "more-horiz",
     color: "#8C8FA1",
     bg_color: "#F3F3F6",
   },
 };
 
-const FALLBACK_META = {
-  short_name: "غير معروفة",
-  icon: "label",
-  color: "#9CA3AF",
-  bg_color: "#F3F4F6",
-};
+const ARABIC_DAYS = ["سبت", "أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة"];
 
-const UNCATEGORIZED_META = {
-  short_name: "غير مصنفة",
-  icon: "help-outline",
-  color: "#BDBDBD",
-  bg_color: "#F5F5F5",
-};
-
-// Arabic day names indexed by JS getUTCDay() (0 = Sunday ... 6 = Saturday)
-const ARABIC_DAYS = ["أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"];
 const ARABIC_MONTHS = [
   "يناير",
   "فبراير",
@@ -80,7 +66,6 @@ const ARABIC_MONTHS = [
   "ديسمبر",
 ];
 
-// Saudi time zone helpers:
 const SAUDI_OFFSET_MS =
   parseInt(process.env.SAUDI_TIMEZONE_OFFSET_HOURS || "3", 10) * 60 * 60 * 1000;
 function toSaudiView(date) {
@@ -99,7 +84,6 @@ function saudiDayOfMonth(date) {
   return toSaudiView(date).getUTCDate();
 }
 
-// Date helpers:
 function startOfWeek(date = new Date()) {
   const sv = toSaudiView(date);
   sv.setUTCHours(0, 0, 0, 0);
@@ -172,14 +156,19 @@ function groupByDay(invoices, startDate, days) {
   return buckets;
 }
 
+// 4 weekly buckets per month:
+//   Week 1: days 1-7
+//   Week 2: days 8-14
+//   Week 3: days 15-21
+//   Week 4: days 22-end (catches days 22-31, no data lost)
 function groupByWeek(invoices) {
-  const buckets = Array.from({ length: 5 }, (_, i) => ({
+  const buckets = Array.from({ length: 4 }, (_, i) => ({
     label: `الأسبوع ${i + 1}`,
     total: 0,
   }));
   for (const inv of invoices) {
     const day = saudiDayOfMonth(new Date(inv.issued_at));
-    const idx = Math.min(Math.floor((day - 1) / 7), 4);
+    const idx = Math.min(Math.floor((day - 1) / 7), 3);
     buckets[idx].total = round2(buckets[idx].total + Number(inv.total_price));
   }
   return buckets;
@@ -198,9 +187,8 @@ function groupByMonth(invoices) {
   return buckets;
 }
 
-// Returns a full design-ready object per category:
-//   categorie_id, categorie_name (short), categorie_name_full,
-//   icon, color, bg_color, total, percent
+// Groups invoices by category. Any invoice with no category OR an unknown
+// category name gets routed to "أخرى" — so frontend never sees nulls/strangers.
 async function groupByCategory(invoices, totalSum) {
   const { data: cats } = await supabase
     .from("categories")
@@ -208,22 +196,23 @@ async function groupByCategory(invoices, totalSum) {
   const nameById = new Map(
     (cats || []).map((c) => [c.categorie_id, c.categorie_name]),
   );
+  // The "أخرى" category catches everything uncategorized or unknown.
+  const otherCat = (cats || []).find((c) => c.categorie_name === "أخرى");
+  const otherCatId = otherCat?.categorie_id || null;
+
   const totals = new Map();
-  let uncategorized = 0;
   for (const inv of invoices) {
-    if (!inv.categorie_id) {
-      uncategorized += Number(inv.total_price);
-      continue;
-    }
-    totals.set(
-      inv.categorie_id,
-      (totals.get(inv.categorie_id) || 0) + Number(inv.total_price),
-    );
+    const name = inv.categorie_id ? nameById.get(inv.categorie_id) : null;
+    const useOther = !name || !CATEGORY_META[name];
+    const targetId = useOther ? otherCatId : inv.categorie_id;
+    if (!targetId) continue; // only happens if "أخرى" itself isn't seeded
+    totals.set(targetId, (totals.get(targetId) || 0) + Number(inv.total_price));
   }
+
   const result = [];
   for (const [id, total] of totals) {
-    const fullName = nameById.get(id) || "غير معروفة";
-    const meta = CATEGORY_META[fullName] || FALLBACK_META;
+    const fullName = nameById.get(id) || "أخرى";
+    const meta = CATEGORY_META[fullName] || CATEGORY_META["أخرى"];
     result.push({
       categorie_id: id,
       categorie_name: meta.short_name,
@@ -235,23 +224,10 @@ async function groupByCategory(invoices, totalSum) {
       percent: totalSum > 0 ? Math.round((total / totalSum) * 1000) / 10 : 0,
     });
   }
-  if (uncategorized > 0) {
-    result.push({
-      categorie_id: null,
-      categorie_name: UNCATEGORIZED_META.short_name,
-      categorie_name_full: null,
-      icon: UNCATEGORIZED_META.icon,
-      color: UNCATEGORIZED_META.color,
-      bg_color: UNCATEGORIZED_META.bg_color,
-      total: round2(uncategorized),
-      percent:
-        totalSum > 0 ? Math.round((uncategorized / totalSum) * 1000) / 10 : 0,
-    });
-  }
   return result.sort((a, b) => b.total - a.total);
 }
 
-// Endpoint logic
+// Endpoint logic (unchanged)
 
 export const getSummary = async (user_id) => {
   const monthStart = startOfMonth();
