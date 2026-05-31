@@ -17,7 +17,7 @@ const categoryMapper = {
 }; 
 
 const BUCKET_NAME = "invoice-files";
-const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+//const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 function getFileType(mimeType) {
   if (mimeType?.startsWith("image/")) return "image";
