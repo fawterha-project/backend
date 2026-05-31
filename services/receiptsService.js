@@ -3,7 +3,7 @@ import axios from "axios";
 import { GoogleGenAI } from "@google/genai";
 import crypto from "crypto";
 import process from "process";
-
+// النسخة الاصليه الباك اب
 // القاموس المسؤول عن ترجمة الأسماء الطويلة من قاعدة البيانات إلى أسماء قصيرة للفرونت إند
 const categoryMapper = {
   "المقاضي والبيت": "المقاضي",
