@@ -24,12 +24,12 @@ router.post("/register", async (req, res) => {
 
     await registerUser(first_name, last_name, email, password);
 
-    // تجاوزنا رسالة السيرفس وثبتناها عربي لتطابق واجهة الكود المرسل
+    
     res.status(201).json({
       message: "تم إنشاء الحساب بنجاح، أرسلنا رمز التحقق إلى بريدك الإلكتروني",
     });
   } catch (error) {
-    // فحص نصوص الخطأ القادمة من السيرفس وترجمتها بدقة
+   
     let errMsg = "عذراً، فشل إنشاء الحساب. تأكد من البيانات المدخلة";
 
     if (error.message.includes("Email already exists")) {

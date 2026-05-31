@@ -1,10 +1,11 @@
 import supabase from "../supabaseClient.js";
 import axios from "axios";
-import { GoogleGenAI } from "@google/genai";
+//import { GoogleGenAI } from "@google/genai";
+import { getModel, rotateKey } from "./geminiClient.js";
 import crypto from "crypto";
 import process from "process";
 
-// القاموس المسؤول عن ترجمة الأسماء الطويلة من قاعدة البيانات إلى أسماء قصيرة للفرونت إند
+
 const categoryMapper = {
   "المقاضي والبيت": "المقاضي",
   "المطاعم والترفيه": "المطاعم",
@@ -111,6 +112,9 @@ const generationConfig = {
 // ─────────────────────────────────────────────────────────────
 // استخراج باستخدام Gemini API
 // ─────────────────────────────────────────────────────────────
+
+
+
 export const extractInvoiceDataWithAI = async (attachment_id, users_id) => {
   try {
     const { data: attachment, error: findError } = await supabase
@@ -133,19 +137,33 @@ export const extractInvoiceDataWithAI = async (attachment_id, users_id) => {
         ? "application/pdf"
         : fileRes.headers["content-type"] || "image/jpeg";
 
-    const response = await genai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [
-        {
-          parts: [
-            { inlineData: { mimeType, data: base64Data } },
-            { text: INVOICE_EXTRACTION_PROMPT },
+   
+    const executeWithRetry = async (attempt = 0) => {
+      try {
+        const model = getModel(); // استخدام الدالة من geminiClient.js
+        return await model.generateContent({
+          contents: [
+            {
+              parts: [
+                { inlineData: { mimeType, data: base64Data } },
+                { text: INVOICE_EXTRACTION_PROMPT },
+              ],
+            },
           ],
-        },
-      ],
-      config: generationConfig,
-    });
+          config: generationConfig,
+        });
+      } catch (error) {
+        // إذا كان الخطأ 429 يعني انتهت الكوتا
+        if (error.status === 429 && attempt < 3) {
+          console.log(`خطأ كوتا، محاولة تبديل المفتاح... (المحاولة ${attempt + 1})`);
+          rotateKey(); // تبديل المفتاح في geminiClient.js
+          return await executeWithRetry(attempt + 1); // إعادة المحاولة بالمفتاح الجديد
+        }
+        throw error; // إذا كان خطأ غير الكوتا أو انتهت المحاولات
+      }
+    };
 
+    const response = await executeWithRetry();
     const rawText = response.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
     let extracted;
@@ -155,7 +173,6 @@ export const extractInvoiceDataWithAI = async (attachment_id, users_id) => {
       return { error: "Gemini returned invalid JSON", raw_response: rawText };
     }
 
-    
     await supabase
       .from("invoice_attachments")
       .update({
@@ -170,7 +187,6 @@ export const extractInvoiceDataWithAI = async (attachment_id, users_id) => {
     return { error: error.message };
   }
 };
-
 // ─────────────────────────────────────────────────────────────
 //
 // ─────────────────────────────────────────────────────────────
@@ -470,12 +486,12 @@ export const getUserReceipts = async (users_id, filters = {}) => {
   const { data: receipts, error } = await query;
   if (error) return { error: error.message };
 
-  // تطبيق القاموس على الاسم الطويل الموجود داخل جدول categories
+  
   const formattedReceipts = receipts.map(receipt => {
-    // نأخذ نسخة من بيانات الفاتورة
+    
     let updatedReceipt = { ...receipt };
     
-    // إذا كانت الفاتورة لها تصنيف (مو null)، نبدل اسمها الطويل للقصير
+
     if (updatedReceipt.categories && updatedReceipt.categories.categorie_name) {
       updatedReceipt.categories.categorie_name = 
         categoryMapper[updatedReceipt.categories.categorie_name] || updatedReceipt.categories.categorie_name;
@@ -501,7 +517,7 @@ export const getReceiptById = async (invoice_id, users_id) => {
 
   if (error) return { error: error.message };
 
-  // 🌟 كود تبديل الاسم الطويل للقصير قبل الإرسال 🌟
+
   if (receipt && receipt.categories && receipt.categories.categorie_name) {
     receipt.categories.categorie_name = 
       categoryMapper[receipt.categories.categorie_name] || receipt.categories.categorie_name;
@@ -532,7 +548,7 @@ export const deleteReceipt = async (invoice_id, users_id) => {
         .eq("attachment_id", attachment.attachment_id);
     }
 
-    //  حذف الفاتورة نهائياً
+    
     const { error: invoiceError } = await supabase
       .from("invoice")
       .delete()
@@ -557,7 +573,7 @@ export const updateInvoiceCategory = async (invoice_id, users_id, categorie_id) 
 
   if (error) return { error: error.message };
 
-  //  حماية إضافية: إذا الفاتورة مو موجودة أو اليوزر ما يملكها
+  
   if (!data || data.length === 0) {
     return { error: "الفاتورة غير موجودة أو ليس لديك صلاحية لتعديلها." };
   }
