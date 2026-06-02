@@ -4,7 +4,11 @@ import axios from "axios";
 import { getModel, rotateKey } from "./geminiClient.js";
 import crypto from "crypto";
 import process from "process";
-
+import {
+  createNewInvoiceNotification,
+  scheduleInvoiceReminders,
+  checkAndNotifySpendingLimits,
+} from "./notificationsService.js";
 
 const categoryMapper = {
   "المقاضي والبيت": "المقاضي",
@@ -13,8 +17,8 @@ const categoryMapper = {
   "النقل والسيارة": "النقل",
   "الصحة والعافية": "الصحة",
   "الفواتير والالتزامات": "الالتزامات",
-  "أخرى": "اخرى"
-}; 
+  أخرى: "اخرى",
+};
 
 const BUCKET_NAME = "invoice-files";
 //const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -32,7 +36,7 @@ const parseNumber = (val) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// Prompt 
+// Prompt
 // ─────────────────────────────────────────────────────────────
 const INVOICE_EXTRACTION_PROMPT = `
 You are a highly accurate invoice data extraction system. Your job is to extract data exactly as it appears on the invoice image or PDF.
@@ -105,15 +109,13 @@ Required JSON Structure:
 `;
 
 const generationConfig = {
-  temperature: 0, 
+  temperature: 0,
   responseMimeType: "application/json",
 };
 
 // ─────────────────────────────────────────────────────────────
 // استخراج باستخدام Gemini API
 // ─────────────────────────────────────────────────────────────
-
-
 
 export const extractInvoiceDataWithAI = async (attachment_id, users_id) => {
   try {
@@ -137,7 +139,6 @@ export const extractInvoiceDataWithAI = async (attachment_id, users_id) => {
         ? "application/pdf"
         : fileRes.headers["content-type"] || "image/jpeg";
 
-   
     const executeWithRetry = async (attempt = 0) => {
       try {
         const model = getModel(); // استخدام الدالة من geminiClient.js
@@ -155,7 +156,9 @@ export const extractInvoiceDataWithAI = async (attachment_id, users_id) => {
       } catch (error) {
         // إذا كان الخطأ 429 يعني انتهت الكوتا
         if (error.status === 429 && attempt < 3) {
-          console.log(`خطأ كوتا، محاولة تبديل المفتاح... (المحاولة ${attempt + 1})`);
+          console.log(
+            `خطأ كوتا، محاولة تبديل المفتاح... (المحاولة ${attempt + 1})`,
+          );
           rotateKey(); // تبديل المفتاح في geminiClient.js
           return await executeWithRetry(attempt + 1); // إعادة المحاولة بالمفتاح الجديد
         }
@@ -197,7 +200,6 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
 
     const data = aiResult.extracted;
 
-    
     if (data.is_invoice === false) {
       await supabase
         .from("invoice_attachments")
@@ -213,10 +215,8 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
       };
     }
 
-    
     let categoryId = null;
     if (data.suggested_category) {
-      
       const { data: categoryData } = await supabase
         .from("categories")
         .select("categorie_id")
@@ -226,10 +226,8 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
       if (categoryData) {
         categoryId = categoryData.categorie_id;
       }
-    
     }
 
-    
     const issuedAt = data.date ? new Date(data.date).toISOString() : null;
     let merchantId = null;
     const merchantName = data.merchant_name?.trim();
@@ -262,7 +260,6 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
       }
     }
 
-   
     const { data: invoice, error: invoiceError } = await supabase
       .from("invoice")
       .insert([
@@ -293,8 +290,16 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
 
     if (invoiceError)
       return { error: `DB Invoice Error: ${invoiceError.message}` };
+    // Fire notifications now that the invoice exists
+    try {
+      await createNewInvoiceNotification(invoice);
+      await scheduleInvoiceReminders(invoice);
+      await checkAndNotifySpendingLimits(users_id);
+    } catch (notifErr) {
+      console.error("Notification dispatch failed:", notifErr.message);
+      // do NOT fail the request — the invoice itself was saved successfully
+    }
 
-    
     if (data.items && Array.isArray(data.items) && data.items.length > 0) {
       const invoiceItems = data.items
         .filter((item) => item.name || item.raw_line)
@@ -316,7 +321,6 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
       }
     }
 
-    
     await supabase
       .from("invoice_attachments")
       .update({
@@ -330,7 +334,6 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
     return { error: error.message };
   }
 };
-
 
 // ─────────────────────────────────────────────────────────────
 export const uploadReceiptAttachment = async (users_id, file, body = {}) => {
@@ -451,7 +454,6 @@ export const deleteAttachment = async (attachment_id, users_id) => {
   }
 };
 
-
 // ─────────────────────────────────────────────────────────────
 export const getUserReceipts = async (users_id, filters = {}) => {
   let query = supabase
@@ -486,21 +488,18 @@ export const getUserReceipts = async (users_id, filters = {}) => {
   const { data: receipts, error } = await query;
   if (error) return { error: error.message };
 
-  
-  const formattedReceipts = receipts.map(receipt => {
-    
+  const formattedReceipts = receipts.map((receipt) => {
     let updatedReceipt = { ...receipt };
-    
 
     if (updatedReceipt.categories && updatedReceipt.categories.categorie_name) {
-      updatedReceipt.categories.categorie_name = 
-        categoryMapper[updatedReceipt.categories.categorie_name] || updatedReceipt.categories.categorie_name;
+      updatedReceipt.categories.categorie_name =
+        categoryMapper[updatedReceipt.categories.categorie_name] ||
+        updatedReceipt.categories.categorie_name;
     }
 
     return updatedReceipt;
   });
 
- 
   return { receipts: formattedReceipts };
 };
 
@@ -517,10 +516,10 @@ export const getReceiptById = async (invoice_id, users_id) => {
 
   if (error) return { error: error.message };
 
-
   if (receipt && receipt.categories && receipt.categories.categorie_name) {
-    receipt.categories.categorie_name = 
-      categoryMapper[receipt.categories.categorie_name] || receipt.categories.categorie_name;
+    receipt.categories.categorie_name =
+      categoryMapper[receipt.categories.categorie_name] ||
+      receipt.categories.categorie_name;
   }
 
   return { receipt };
@@ -528,27 +527,23 @@ export const getReceiptById = async (invoice_id, users_id) => {
 
 export const deleteReceipt = async (invoice_id, users_id) => {
   try {
-   
     const { data: attachment } = await supabase
       .from("invoice_attachments")
-      .select("attachment_id, storage_path") 
+      .select("attachment_id, storage_path")
       .eq("invoice_id", invoice_id)
-      .maybeSingle(); 
-
+      .maybeSingle();
 
     if (attachment && attachment.storage_path) {
       await supabase.storage
-        .from(BUCKET_NAME) 
+        .from(BUCKET_NAME)
         .remove([attachment.storage_path]);
 
-      
       await supabase
         .from("invoice_attachments")
         .delete()
         .eq("attachment_id", attachment.attachment_id);
     }
 
-    
     const { error: invoiceError } = await supabase
       .from("invoice")
       .delete()
@@ -563,17 +558,20 @@ export const deleteReceipt = async (invoice_id, users_id) => {
     return { error: error.message };
   }
 };
-export const updateInvoiceCategory = async (invoice_id, users_id, categorie_id) => {
+export const updateInvoiceCategory = async (
+  invoice_id,
+  users_id,
+  categorie_id,
+) => {
   const { data, error } = await supabase
     .from("invoice")
     .update({ categorie_id: categorie_id })
     .eq("invoice_id", invoice_id)
-    .eq("users_id", users_id) 
+    .eq("users_id", users_id)
     .select(); //
 
   if (error) return { error: error.message };
 
-  
   if (!data || data.length === 0) {
     return { error: "الفاتورة غير موجودة أو ليس لديك صلاحية لتعديلها." };
   }
