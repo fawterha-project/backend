@@ -13,7 +13,7 @@ const CATEGORY_META = {
   },
   "المطاعم والترفيه": {
     short_name: "المطاعم",
-    icon: "utensils",
+    icon: "restaurant",
     color: "#2563FF",
     bg_color: "#EEF4FF",
   },
@@ -25,25 +25,25 @@ const CATEGORY_META = {
   },
   "النقل والسيارة": {
     short_name: "النقل",
-    icon: "car",
+    icon: "directions-bus",
     color: "#FFB000",
     bg_color: "#FFF6E7",
   },
   "الصحة والعافية": {
     short_name: "الصحة",
-    icon: "heart",
+    icon: "favorite",
     color: "#FF4B5C",
     bg_color: "#FFECEF",
   },
   "الفواتير والالتزامات": {
     short_name: "الفواتير",
-    icon: "file-invoice",
+    icon: "event",
     color: "#12C6D7",
     bg_color: "#EAFBFC",
   },
   أخرى: {
     short_name: "أخرى",
-    icon: "ellipsis-h",
+    icon: "more-horiz",
     color: "#8C8FA1",
     bg_color: "#F3F3F6",
   },
