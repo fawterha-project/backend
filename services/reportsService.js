@@ -5,45 +5,45 @@ import process from "node:process";
 // donut chart + category list cards. Anything without a known
 // category (NULL categorie_id or unknown name) is routed into "أخرى".
 const CATEGORY_META = {
-  المقاضي: {
-    name: "المقاضي",
+  "المقاضي والبيت": {
+    short_name: "المقاضي",
     icon: "shopping-basket",
     color: "#22C55E",
     bg_color: "#EAFBF0",
   },
-  المطاعم: {
-    name: "المطاعم",
-    icon: "restaurant",
+  "المطاعم والترفيه": {
+    short_name: "المطاعم",
+    icon: "utensils",
     color: "#2563FF",
     bg_color: "#EEF4FF",
   },
-  التسوق: {
-    name: "التسوق",
+  "التسوق والأناقة": {
+    short_name: "التسوق",
     icon: "shopping-bag",
     color: "#A020F0",
     bg_color: "#F6EAFF",
   },
-  النقل: {
-    name: "النقل",
-    icon: "directions-bus",
+  "النقل والسيارة": {
+    short_name: "النقل",
+    icon: "car",
     color: "#FFB000",
     bg_color: "#FFF6E7",
   },
-  الصحة: {
-    name: "الصحة",
-    icon: "favorite",
+  "الصحة والعافية": {
+    short_name: "الصحة",
+    icon: "heart",
     color: "#FF4B5C",
     bg_color: "#FFECEF",
   },
-  الالتزامات: {
-    name: "الالتزامات",
-    icon: "event",
+  "الفواتير والالتزامات": {
+    short_name: "الفواتير",
+    icon: "file-invoice",
     color: "#12C6D7",
     bg_color: "#EAFBFC",
   },
   أخرى: {
-    name: "أخرى",
-    icon: "more-horiz",
+    short_name: "أخرى",
+    icon: "ellipsis-h",
     color: "#8C8FA1",
     bg_color: "#F3F3F6",
   },
