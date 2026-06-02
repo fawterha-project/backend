@@ -1,7 +1,6 @@
 import supabase from "../supabaseClient.js";
 import axios from "axios";
-//import { GoogleGenAI } from "@google/genai";
-import { getModel, rotateKey } from "./geminiClient.js";
+import { getClient, rotateKey } from "./geminiClient.js";
 import crypto from "crypto";
 import process from "process";
 import {
@@ -21,7 +20,6 @@ const categoryMapper = {
 };
 
 const BUCKET_NAME = "invoice-files";
-//const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 function getFileType(mimeType) {
   if (mimeType?.startsWith("image/")) return "image";
@@ -91,9 +89,9 @@ Required JSON Structure:
   "extra_details": {
     "branch_name": null,
     "cashier_name": null,
-    "return_policy": null
+    "return_policy": null,
     "tendered_amount": null,
-    "change_amount": null,
+    "change_amount": null
   },
   "items": [
     {
@@ -141,28 +139,22 @@ export const extractInvoiceDataWithAI = async (attachment_id, users_id) => {
 
     const executeWithRetry = async (attempt = 0) => {
       try {
-        const model = getModel(); // استخدام الدالة من geminiClient.js
-        return await model.generateContent({
+        const ai = getClient();
+        return await ai.models.generateContent({
+          model: "gemini-2.5-flash",
           contents: [
-            {
-              parts: [
-                { inlineData: { mimeType, data: base64Data } },
-                { text: INVOICE_EXTRACTION_PROMPT },
-              ],
-            },
+            { text: INVOICE_EXTRACTION_PROMPT },
+            { inlineData: { mimeType, data: base64Data } },
           ],
           config: generationConfig,
         });
       } catch (error) {
-        // إذا كان الخطأ 429 يعني انتهت الكوتا
         if (error.status === 429 && attempt < 3) {
-          console.log(
-            `خطأ كوتا، محاولة تبديل المفتاح... (المحاولة ${attempt + 1})`,
-          );
-          rotateKey(); // تبديل المفتاح في geminiClient.js
-          return await executeWithRetry(attempt + 1); // إعادة المحاولة بالمفتاح الجديد
+          console.log(`Quota error, rotating key... (attempt ${attempt + 1})`);
+          rotateKey();
+          return await executeWithRetry(attempt + 1);
         }
-        throw error; // إذا كان خطأ غير الكوتا أو انتهت المحاولات
+        throw error;
       }
     };
 
@@ -190,8 +182,9 @@ export const extractInvoiceDataWithAI = async (attachment_id, users_id) => {
     return { error: error.message };
   }
 };
+
 // ─────────────────────────────────────────────────────────────
-//
+// Create invoice row from extracted data
 // ─────────────────────────────────────────────────────────────
 export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
   try {
@@ -266,7 +259,7 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
         {
           users_id,
           merchant_id: merchantId,
-          categorie_id: categoryId, // ربط التصنيف التلقائي هنا
+          categorie_id: categoryId,
           title:
             data.title || (merchantName ? `فاتورة - ${merchantName}` : null),
           invoice_number: data.invoice_number || null,
@@ -290,6 +283,7 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
 
     if (invoiceError)
       return { error: `DB Invoice Error: ${invoiceError.message}` };
+
     // Fire notifications now that the invoice exists
     try {
       await createNewInvoiceNotification(invoice);
@@ -335,6 +329,8 @@ export const createInvoiceFromAttachment = async (attachment_id, users_id) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────
+// Upload + Attachment Management
 // ─────────────────────────────────────────────────────────────
 export const uploadReceiptAttachment = async (users_id, file, body = {}) => {
   try {
@@ -455,6 +451,8 @@ export const deleteAttachment = async (attachment_id, users_id) => {
 };
 
 // ─────────────────────────────────────────────────────────────
+// Receipts (Invoices) read / update / delete
+// ─────────────────────────────────────────────────────────────
 export const getUserReceipts = async (users_id, filters = {}) => {
   let query = supabase
     .from("invoice")
@@ -558,6 +556,7 @@ export const deleteReceipt = async (invoice_id, users_id) => {
     return { error: error.message };
   }
 };
+
 export const updateInvoiceCategory = async (
   invoice_id,
   users_id,
@@ -568,7 +567,7 @@ export const updateInvoiceCategory = async (
     .update({ categorie_id: categorie_id })
     .eq("invoice_id", invoice_id)
     .eq("users_id", users_id)
-    .select(); //
+    .select();
 
   if (error) return { error: error.message };
 
